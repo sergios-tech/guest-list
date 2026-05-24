@@ -1,4 +1,5 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard, Roles, RolesGuard } from './jwt-auth.guard';
@@ -19,6 +20,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })             // 5 attempts / min / IP
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
   }
@@ -26,6 +28,7 @@ export class AuthController {
   @Post('register')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })          // 3 / hour / IP
   register(@Body() dto: CreateUserDto) {
     return this.auth.register(dto.email, dto.password, dto.displayName, dto.role, dto.locale);
   }
