@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 import { IsBoolean, IsOptional, IsString, MaxLength, IsUUID } from 'class-validator';
 import { Injectable } from '@nestjs/common';
 import { Attendee } from '../../entities/attendee.entity';
+import { Invitation } from '../../entities/invitation.entity';
 import { JwtAuthGuard, Roles, RolesGuard } from '../auth/jwt-auth.guard';
 
 class CreateAttendeeDto {
@@ -23,7 +24,10 @@ class UpdateAttendeeDto {
 
 @Injectable()
 export class AttendeesService {
-  constructor(@InjectRepository(Attendee) private readonly repo: Repository<Attendee>) {}
+  constructor(
+    @InjectRepository(Attendee) private readonly repo: Repository<Attendee>,
+    @InjectRepository(Invitation) private readonly invitations: Repository<Invitation>,
+  ) {}
 
   listByInvitation(invitationId: string) {
     return this.repo.find({ where: { invitationId }, order: { fullName: 'ASC' } });
@@ -33,7 +37,14 @@ export class AttendeesService {
     if (!a) throw new NotFoundException(`Attendee ${id} not found`);
     return a;
   }
-  create(dto: CreateAttendeeDto) {
+  async create(dto: CreateAttendeeDto) {
+    const invitationExists = await this.invitations.findOne({
+      where: { id: dto.invitationId },
+      select: ['id'],
+    });
+    if (!invitationExists) {
+      throw new NotFoundException(`Invitation ${dto.invitationId} not found`);
+    }
     return this.repo.save(this.repo.create(dto));
   }
   async update(id: string, dto: UpdateAttendeeDto) {
@@ -82,7 +93,7 @@ export class AttendeesController {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Attendee])],
+  imports: [TypeOrmModule.forFeature([Attendee, Invitation])],
   controllers: [AttendeesController],
   providers: [AttendeesService],
 })
