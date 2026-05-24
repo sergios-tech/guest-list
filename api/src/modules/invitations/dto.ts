@@ -3,6 +3,7 @@ import {
   Max, Min, MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PartialType } from '@nestjs/mapped-types';
 import {
   RsvpStatus, AccommodationType,
 } from '../../entities/invitation.entity';
@@ -35,11 +36,18 @@ export class CreateInvitationDto {
   @IsOptional() @IsString() @MaxLength(500)
   declineReason?: string;
 
-  @IsOptional() @IsString() @MaxLength(1000)
+  @IsOptional() @IsString() @MaxLength(2000)
   notes?: string;
 }
 
-export class UpdateInvitationDto extends CreateInvitationDto {}
+// PartialType makes every CreateInvitationDto field @IsOptional() while
+// preserving their other validators (e.g. @IsString, @MaxLength). Without
+// this, a PATCH that omits guestLabel returns 400.
+export class UpdateInvitationDto extends PartialType(CreateInvitationDto) {
+  // Optimistic concurrency token echoed by the client (TypeORM @VersionColumn).
+  @IsOptional() @IsInt() @Min(0)
+  version?: number;
+}
 
 export class ListInvitationsQueryDto {
   @IsOptional() @IsEnum(RsvpStatus) status?: RsvpStatus;
