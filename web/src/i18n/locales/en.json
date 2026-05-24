@@ -1,0 +1,88 @@
+{
+  "app": {
+    "title": "Guest List",
+    "logout": "Log out",
+    "language": "Language",
+    "menu": "Menu"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "invitations": "Invitations",
+    "addInvitation": "Add Invitation"
+  },
+  "login": {
+    "title": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "error": "Invalid credentials"
+  },
+  "auth": {
+    "sessionExpired": "Your session expired — please sign in again.",
+    "expiringSoon": "Your session ends in about a minute. Save your work."
+  },
+  "stats": {
+    "pending": "Pending response",
+    "confirmedInvites": "Confirmed invites",
+    "notInvited": "Not invited yet",
+    "declined": "Declined",
+    "totalInvites": "Total invites",
+    "plannedHeadcount": "Planned headcount",
+    "confirmedHeadcount": "Confirmed headcount",
+    "forecastHeadcount": "Forecast headcount"
+  },
+  "invitation": {
+    "guestLabel": "Guest",
+    "plannedCount": "Planned",
+    "status": "Status",
+    "adults": "Adults",
+    "children": "Children",
+    "confirmedTotal": "Confirmed",
+    "forecast": "Forecast",
+    "responseDate": "Response date",
+    "accommodation": "Accommodation",
+    "declineReason": "Decline reason",
+    "notes": "Notes",
+    "attendees": "Named attendees",
+    "addAttendee": "Add attendee",
+    "fullName": "Full name",
+    "isChild": "Child",
+    "dietaryNotes": "Dietary notes",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Delete invitation?",
+    "deleteConfirm": "Permanently delete invitation for {{label}}? This also removes all named attendees and cannot be undone.",
+    "edit": "Edit",
+    "back": "Back",
+    "filter": "Filter",
+    "search": "Search guest…",
+    "total": "Total",
+    "inlineEditing": "Inline editing",
+    "created": "Invitation created.",
+    "updated": "Invitation updated.",
+    "deleted": "Invitation deleted."
+  },
+  "status": {
+    "NIJE_POZVAN": "Not invited",
+    "POZVAN": "Invited",
+    "ODBIJENO": "Declined",
+    "POTVRDJEN_DOLAZAK": "Confirmed"
+  },
+  "accommodation": {
+    "NONE": "None",
+    "SIESTA_SINGLE": "Siesta — single",
+    "SIESTA_DOUBLE": "Siesta — double",
+    "SIESTA_APARTMENT": "Siesta — apartment",
+    "ARIA": "Aria"
+  },
+  "errors": {
+    "GENERIC": "Something went wrong. Please try again.",
+    "INVITATION_CONFIRMED_REQUIRES_ADULTS": "Confirmed invitations must have an adult count.",
+    "INVITATION_DECLINED_WITH_COUNTS": "Declined invitations cannot have adults or children.",
+    "INVITATION_CHECK_VIOLATION": "That change is not allowed by the invitation rules.",
+    "INVITATION_UNIQUE_VIOLATION": "A conflicting record already exists.",
+    "INVITATION_FK_VIOLATION": "Referenced record not found.",
+    "INVITATION_CONFLICT": "This invitation was edited by someone else. The latest version was reloaded — please reapply your change."
+  }
+}

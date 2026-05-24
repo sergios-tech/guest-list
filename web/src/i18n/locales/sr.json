@@ -1,0 +1,88 @@
+{
+  "app": {
+    "title": "Spisak gostiju",
+    "logout": "Odjavi se",
+    "language": "Jezik",
+    "menu": "Meni"
+  },
+  "nav": {
+    "dashboard": "Pregled",
+    "invitations": "Pozivnice",
+    "addInvitation": "Dodaj pozivnicu"
+  },
+  "login": {
+    "title": "Prijava",
+    "email": "Email",
+    "password": "Lozinka",
+    "submit": "Prijavi se",
+    "error": "Pogrešni podaci"
+  },
+  "auth": {
+    "sessionExpired": "Sesija je istekla — prijavite se ponovo.",
+    "expiringSoon": "Sesija ističe za otprilike minut. Sačuvajte rad."
+  },
+  "stats": {
+    "pending": "Čeka se odgovor",
+    "confirmedInvites": "Potvrđene pozivnice",
+    "notInvited": "Još nije pozvan",
+    "declined": "Odbili",
+    "totalInvites": "Ukupno pozivnica",
+    "plannedHeadcount": "Planirano gostiju",
+    "confirmedHeadcount": "Potvrđeno gostiju",
+    "forecastHeadcount": "Prognoza gostiju"
+  },
+  "invitation": {
+    "guestLabel": "Gost",
+    "plannedCount": "Planirano",
+    "status": "Status",
+    "adults": "Odrasli",
+    "children": "Deca",
+    "confirmedTotal": "Potvrdili",
+    "forecast": "Prognoza",
+    "responseDate": "Datum odgovora",
+    "accommodation": "Smeštaj",
+    "declineReason": "Razlog odbijanja",
+    "notes": "Napomena",
+    "attendees": "Imenovani gosti",
+    "addAttendee": "Dodaj gosta",
+    "fullName": "Ime i prezime",
+    "isChild": "Dete",
+    "dietaryNotes": "Posebne potrebe",
+    "save": "Sačuvaj",
+    "cancel": "Otkaži",
+    "delete": "Obriši",
+    "deleteConfirmTitle": "Obrisati pozivnicu?",
+    "deleteConfirm": "Da li ste sigurni da želite trajno obrisati pozivnicu za {{label}}? Time se brišu i svi imenovani gosti, akcija je nepovratna.",
+    "edit": "Izmeni",
+    "back": "Nazad",
+    "filter": "Filter",
+    "search": "Pretraga gosta…",
+    "total": "Ukupno",
+    "inlineEditing": "Brzo uređivanje",
+    "created": "Pozivnica kreirana.",
+    "updated": "Pozivnica izmenjena.",
+    "deleted": "Pozivnica obrisana."
+  },
+  "status": {
+    "NIJE_POZVAN": "Nije pozvan",
+    "POZVAN": "Pozvan",
+    "ODBIJENO": "Odbijeno",
+    "POTVRDJEN_DOLAZAK": "Potvrđen dolazak"
+  },
+  "accommodation": {
+    "NONE": "Bez smeštaja",
+    "SIESTA_SINGLE": "Siesta — jednokrevetna",
+    "SIESTA_DOUBLE": "Siesta — dvokrevetna",
+    "SIESTA_APARTMENT": "Siesta — apartman",
+    "ARIA": "Aria"
+  },
+  "errors": {
+    "GENERIC": "Došlo je do greške. Pokušajte ponovo.",
+    "INVITATION_CONFIRMED_REQUIRES_ADULTS": "Potvrđena pozivnica mora imati broj odraslih.",
+    "INVITATION_DECLINED_WITH_COUNTS": "Odbijena pozivnica ne sme imati odrasle ni decu.",
+    "INVITATION_CHECK_VIOLATION": "Izmena nije dozvoljena prema pravilima pozivnice.",
+    "INVITATION_UNIQUE_VIOLATION": "Već postoji zapis koji se kosi sa ovim.",
+    "INVITATION_FK_VIOLATION": "Referencirani zapis ne postoji.",
+    "INVITATION_CONFLICT": "Pozivnicu je u međuvremenu izmenio neko drugi. Učitana je najnovija verzija — primenite izmenu ponovo."
+  }
+}
