@@ -19,7 +19,7 @@ services:
     build: ./api
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-dbuser}:${POSTGRES_PASSWORD:-db_p@$$W0rd_CHANGE_ME}@db:5432/${POSTGRES_DB:-guests}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env (generate with: openssl rand -base64 48)}
+      JWT_SECRET: "${JWT_SECRET:?must be set in .env, generate with openssl rand -base64 48}"
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
       PORT: "3000"
     depends_on:
