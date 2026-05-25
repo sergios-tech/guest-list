@@ -72,6 +72,9 @@ function rethrowDbError(err: unknown): never {
 
 // Hydrated seat record shipped to the frontend. `attendee` and `invitation`
 // summaries let the UI render labels without an N+1 round-trip.
+// `householdInvitationId` resolves to the invitation that "owns" this seat
+// regardless of whether it's assigned via an attendee or a slot — used by
+// the click-to-hoist sidebar pinning UX.
 interface SeatView {
   id: string;
   tableId: string;
@@ -81,6 +84,7 @@ interface SeatView {
   slotIndex: number | null;
   attendeeName: string | null;
   invitationLabel: string | null;
+  householdInvitationId: string | null;
 }
 
 interface TableView {
@@ -220,11 +224,13 @@ export class SeatingService {
       attendee_id: string | null; invitation_id: string | null;
       slot_index: number | null;
       attendee_name: string | null; guest_label: string | null;
+      household_invitation_id: string | null;
     }> = await this.ds.query(`
       SELECT s.id, s.table_id, s.seat_number,
              s.attendee_id, s.invitation_id, s.slot_index,
              a.full_name AS attendee_name,
-             i.guest_label
+             i.guest_label,
+             i.id AS household_invitation_id
         FROM seat s
         LEFT JOIN attendee a ON a.id = s.attendee_id
         LEFT JOIN invitation i ON i.id = COALESCE(s.invitation_id, a.invitation_id)
@@ -244,6 +250,7 @@ export class SeatingService {
         slotIndex: r.slot_index,
         attendeeName: r.attendee_name,
         invitationLabel: r.guest_label,
+        householdInvitationId: r.household_invitation_id,
       });
       seatsByTable.set(r.table_id, arr);
     }

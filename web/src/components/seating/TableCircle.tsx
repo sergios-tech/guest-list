@@ -38,9 +38,10 @@ interface SeatProps {
   seat: SeatView;
   cx: number;
   cy: number;
+  onHoist?: (invitationId: string) => void;
 }
 
-function Seat({ seat, cx, cy }: SeatProps) {
+function Seat({ seat, cx, cy, onHoist }: SeatProps) {
   const { t } = useTranslation();
   const occupied = !!(seat.attendeeId || seat.invitationId);
   const displayName =
@@ -119,9 +120,22 @@ function Seat({ seat, cx, cy }: SeatProps) {
         {seat.seatNumber}
       </Box>
       {displayName ? (
-        <Tooltip title={displayName} enterDelay={400}>
+        <Tooltip
+          title={onHoist && seat.householdInvitationId
+            ? `${displayName} — ${t('seating.pinHousehold')}`
+            : displayName}
+          enterDelay={400}
+        >
           <Typography
             variant="caption"
+            onClick={(e) => {
+              // Stop propagation so the click doesn't bubble to the drag
+              // handler on the seat circle above.
+              e.stopPropagation();
+              if (onHoist && seat.householdInvitationId) {
+                onHoist(seat.householdInvitationId);
+              }
+            }}
             sx={{
               mt: 0.5,
               maxWidth: NAME_W,
@@ -130,6 +144,10 @@ function Seat({ seat, cx, cy }: SeatProps) {
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
+              cursor: onHoist && seat.householdInvitationId ? 'pointer' : 'default',
+              '&:hover': onHoist && seat.householdInvitationId ? {
+                textDecoration: 'underline',
+              } : undefined,
             }}
           >
             {displayName}
@@ -144,9 +162,12 @@ interface TableCircleProps {
   table: TableView;
   totalTables: number;
   onEdit: (table: TableView) => void;
+  onHoist?: (invitationId: string) => void;
 }
 
-export default function TableCircle({ table, totalTables, onEdit }: TableCircleProps) {
+export default function TableCircle({
+  table, totalTables, onEdit, onHoist,
+}: TableCircleProps) {
   const { t } = useTranslation();
   const positions = seatPositions(table.seatCount);
 
@@ -206,7 +227,9 @@ export default function TableCircle({ table, totalTables, onEdit }: TableCircleP
 
       {table.seats.map((seat, i) => {
         const pos = positions[i] ?? positions[0];
-        return <Seat key={seat.id} seat={seat} cx={pos.cx} cy={pos.cy} />;
+        return (
+          <Seat key={seat.id} seat={seat} cx={pos.cx} cy={pos.cy} onHoist={onHoist} />
+        );
       })}
     </Paper>
   );

@@ -1,6 +1,7 @@
 import {
   Box, Chip, Paper, Stack, Typography, Divider,
 } from '@mui/material';
+import PushPinIcon from '@mui/icons-material/PushPin';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { useTranslation } from 'react-i18next';
 import {
@@ -9,9 +10,10 @@ import {
 
 interface DraggableUnitChipProps {
   unit: UnseatedUnit;
+  onHoist?: (invitationId: string) => void;
 }
 
-function DraggableUnitChip({ unit }: DraggableUnitChipProps) {
+function DraggableUnitChip({ unit, onHoist }: DraggableUnitChipProps) {
   const { t } = useTranslation();
   const label = unit.kind === 'attendee'
     ? unit.attendeeName
@@ -24,6 +26,9 @@ function DraggableUnitChip({ unit }: DraggableUnitChipProps) {
       ref={setNodeRef}
       {...attributes}
       {...listeners}
+      // The activation distance (4px) on the page's PointerSensor means a
+      // plain click without dragging fires onClick instead of starting a drag.
+      onClick={() => onHoist?.(unit.invitationId)}
       sx={{
         cursor: 'grab',
         opacity: isDragging ? 0.3 : 1,
@@ -42,9 +47,11 @@ function DraggableUnitChip({ unit }: DraggableUnitChipProps) {
 
 interface AttendeeSidebarProps {
   unseated: UnseatedUnit[];
+  pinned: string[];        // invitation ids, most recent first
+  onHoist?: (invitationId: string) => void;
 }
 
-export default function AttendeeSidebar({ unseated }: AttendeeSidebarProps) {
+export default function AttendeeSidebar({ unseated, pinned, onHoist }: AttendeeSidebarProps) {
   const { t } = useTranslation();
 
   // Drop here to unassign whatever is being dragged. The sidebar accepts both
@@ -58,7 +65,20 @@ export default function AttendeeSidebar({ unseated }: AttendeeSidebarProps) {
     bucket.units.push(u);
     byInvitation.set(u.invitationId, bucket);
   }
-  const groups = Array.from(byInvitation.entries());
+
+  // Pinned households come first (in pin order), then the rest alphabetically
+  // by the order they appeared in the unseated list (already sorted server-side).
+  const pinnedSet = new Set(pinned);
+  const pinnedEntries: Array<[string, { label: string; units: UnseatedUnit[] }]> = [];
+  for (const invId of pinned) {
+    const bucket = byInvitation.get(invId);
+    if (bucket) pinnedEntries.push([invId, bucket]);
+  }
+  const restEntries: Array<[string, { label: string; units: UnseatedUnit[] }]> = [];
+  for (const [invId, bucket] of byInvitation.entries()) {
+    if (!pinnedSet.has(invId)) restEntries.push([invId, bucket]);
+  }
+  const groups = [...pinnedEntries, ...restEntries];
 
   return (
     <Paper
@@ -98,18 +118,38 @@ export default function AttendeeSidebar({ unseated }: AttendeeSidebarProps) {
           </Typography>
         ) : (
           <Stack spacing={1.25} sx={{ pt: 1 }}>
-            {groups.map(([invId, { label, units }]) => (
-              <Box key={invId}>
-                <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                  {label}
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.25 }}>
-                  {units.map((u) => (
-                    <DraggableUnitChip key={unseatedUnitKey(u)} unit={u} />
-                  ))}
+            {groups.map(([invId, { label, units }]) => {
+              const isPinned = pinnedSet.has(invId);
+              return (
+                <Box
+                  key={invId}
+                  sx={(theme) => (isPinned ? {
+                    backgroundColor: theme.palette.action.selected,
+                    borderRadius: 1,
+                    p: 0.5,
+                    mx: -0.5,
+                  } : {})}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {isPinned ? (
+                      <PushPinIcon fontSize="inherit" sx={{ color: 'primary.main' }} />
+                    ) : null}
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                      {label}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.25 }}>
+                    {units.map((u) => (
+                      <DraggableUnitChip
+                        key={unseatedUnitKey(u)}
+                        unit={u}
+                        onHoist={onHoist}
+                      />
+                    ))}
+                  </Box>
                 </Box>
-              </Box>
-            ))}
+              );
+            })}
           </Stack>
         )}
       </Box>

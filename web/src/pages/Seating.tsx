@@ -59,6 +59,13 @@ export default function Seating() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<ConfigDialogMode>(null);
   const [activeDrag, setActiveDrag] = useState<{ id: string; label: string } | null>(null);
+  // Invitation ids pinned to the top of the unseated sidebar, most recent
+  // first. Resets when the plan changes since pins are plan-specific intent.
+  const [pinned, setPinned] = useState<string[]>([]);
+
+  function hoistHousehold(invitationId: string) {
+    setPinned((prev) => [invitationId, ...prev.filter((x) => x !== invitationId)]);
+  }
 
   // Slight activation distance prevents accidental drags when the user just
   // means to tap a chip — important on touch screens.
@@ -91,6 +98,11 @@ export default function Seating() {
     const active = plans.find((p) => p.isActive);
     setSelectedId((active ?? plans[0])?.id ?? null);
   }, [plans, plansLoading, selectedId]);
+
+  // Pins are plan-specific — wipe them when the user switches plan.
+  useEffect(() => {
+    setPinned([]);
+  }, [selectedId]);
 
   // ------------- mutations -------------
 
@@ -256,7 +268,11 @@ export default function Seating() {
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <Grid container spacing={2} sx={{ flex: 1, minHeight: 0 }}>
             <Grid item xs={12} md={3} lg={2.5}>
-              <AttendeeSidebar unseated={unseated} />
+              <AttendeeSidebar
+                unseated={unseated}
+                pinned={pinned}
+                onHoist={hoistHousehold}
+              />
             </Grid>
             <Grid item xs={12} md={9} lg={9.5}>
               <Stack spacing={2}>
@@ -294,6 +310,7 @@ export default function Seating() {
                       table={table}
                       totalTables={plan.tables.length}
                       onEdit={(t) => setDialog({ kind: 'editTable', table: t, planId: plan.id })}
+                      onHoist={hoistHousehold}
                     />
                   ))}
                 </Box>

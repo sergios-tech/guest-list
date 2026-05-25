@@ -19,6 +19,9 @@ export interface SeatView {
   slotIndex: number | null;
   attendeeName: string | null;
   invitationLabel: string | null;
+  // The invitation that owns this seat regardless of whether it's assigned
+  // via an attendee or a slot. Drives the click-to-hoist sidebar pinning.
+  householdInvitationId: string | null;
 }
 
 export interface TableView {

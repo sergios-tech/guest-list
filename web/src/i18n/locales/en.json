@@ -113,7 +113,8 @@
     "seatNumberLabel": "#{{number}}",
     "emptySeat": "Empty",
     "guestSlot": "Guest {{index}}",
-    "noConfirmedGuests": "No confirmed guests yet — confirm RSVPs first."
+    "noConfirmedGuests": "No confirmed guests yet — confirm RSVPs first.",
+    "pinHousehold": "click to pin household to top"
   },
   "accommodation": {
     "NONE": "None",
