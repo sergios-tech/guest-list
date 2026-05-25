@@ -2,6 +2,9 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { User } from '../entities/user.entity';
 import { Invitation } from '../entities/invitation.entity';
 import { Attendee } from '../entities/attendee.entity';
+import { SeatingPlan } from '../entities/seating-plan.entity';
+import { SeatingTable } from '../entities/seating-table.entity';
+import { Seat } from '../entities/seat.entity';
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -19,7 +22,7 @@ export function buildTypeOrmConfig(): TypeOrmModuleOptions {
 
   const common: Partial<TypeOrmModuleOptions> = {
     type: 'postgres',
-    entities: [User, Invitation, Attendee],
+    entities: [User, Invitation, Attendee, SeatingPlan, SeatingTable, Seat],
     synchronize: false,        // schema owned by db/01_schema.sql
     logging: process.env.NODE_ENV === 'production'
       ? ['error', 'warn']

@@ -120,6 +120,113 @@ CREATE TRIGGER trg_user_touch
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 ------------------------------------------------------------------
+-- seating plans (table layout for the reception)
+------------------------------------------------------------------
+CREATE TABLE seating_plan (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name            text NOT NULL,
+  is_active       boolean NOT NULL DEFAULT false,
+  notes           text,
+  created_by      uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  updated_by      uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  version         integer NOT NULL DEFAULT 0       -- TypeORM @VersionColumn
+);
+
+-- At most one plan can be the "active" one at a time. Partial unique index:
+-- the constraint applies only to rows with is_active = true, so unlimited
+-- inactive plans coexist.
+CREATE UNIQUE INDEX ux_seating_plan_one_active
+  ON seating_plan (is_active) WHERE is_active = true;
+
+CREATE TRIGGER trg_seating_plan_touch
+  BEFORE UPDATE ON seating_plan
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TABLE seating_table (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  plan_id         uuid NOT NULL REFERENCES seating_plan(id) ON DELETE CASCADE,
+  table_number    smallint NOT NULL CHECK (table_number BETWEEN 1 AND 200),
+  seat_count      smallint NOT NULL CHECK (seat_count BETWEEN 1 AND 30),
+  label           text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+
+  UNIQUE (plan_id, table_number),
+  -- Composite uniqueness so `seat` can use a composite FK to guarantee a seat
+  -- can never reference a table from a different plan.
+  UNIQUE (id, plan_id)
+);
+
+CREATE INDEX ix_seating_table_plan ON seating_table(plan_id);
+
+CREATE TRIGGER trg_seating_table_touch
+  BEFORE UPDATE ON seating_table
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- One row per physical seat. Materialised on table creation so the UI can
+-- read the full layout in one query and every seat has a stable UUID for
+-- drag-and-drop.
+CREATE TABLE seat (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  plan_id         uuid NOT NULL,
+  table_id        uuid NOT NULL,
+  seat_number     smallint NOT NULL CHECK (seat_number BETWEEN 1 AND 30),
+  -- A seat is either empty, or holds a named attendee, or holds a slot of an
+  -- invitation (e.g. "Guest 3 of Perišić"). The check below enforces XOR.
+  attendee_id     uuid REFERENCES attendee(id) ON DELETE SET NULL,
+  invitation_id   uuid REFERENCES invitation(id) ON DELETE SET NULL,
+  slot_index      smallint CHECK (slot_index IS NULL OR slot_index BETWEEN 1 AND 12),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+
+  -- Composite FK: a seat's plan must match its table's plan.
+  FOREIGN KEY (table_id, plan_id)
+    REFERENCES seating_table(id, plan_id) ON DELETE CASCADE,
+
+  UNIQUE (table_id, seat_number),
+
+  CONSTRAINT chk_seat_one_assignment CHECK (
+    (attendee_id IS NULL AND invitation_id IS NULL AND slot_index IS NULL)
+    OR (attendee_id IS NOT NULL AND invitation_id IS NULL AND slot_index IS NULL)
+    OR (attendee_id IS NULL AND invitation_id IS NOT NULL AND slot_index IS NOT NULL)
+  )
+);
+
+CREATE INDEX ix_seat_plan  ON seat(plan_id);
+CREATE INDEX ix_seat_table ON seat(table_id);
+
+-- An attendee sits at most once *within a plan* (different plans may seat the
+-- same attendee independently).
+CREATE UNIQUE INDEX ux_seat_unique_attendee
+  ON seat (plan_id, attendee_id) WHERE attendee_id IS NOT NULL;
+
+-- An invitation slot is used at most once within a plan.
+CREATE UNIQUE INDEX ux_seat_unique_slot
+  ON seat (plan_id, invitation_id, slot_index) WHERE invitation_id IS NOT NULL;
+
+CREATE TRIGGER trg_seat_touch
+  BEFORE UPDATE ON seat
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- When an invitation is deleted, the FK on seat.invitation_id is ON DELETE
+-- SET NULL — but that would leave slot_index non-NULL, violating
+-- chk_seat_one_assignment. Clear the assignment fields before the FK fires.
+CREATE OR REPLACE FUNCTION clear_seats_on_invitation_delete() RETURNS trigger AS $$
+BEGIN
+  UPDATE seat
+     SET invitation_id = NULL, slot_index = NULL
+   WHERE invitation_id = OLD.id;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_invitation_clear_seats
+  BEFORE DELETE ON invitation
+  FOR EACH ROW EXECUTE FUNCTION clear_seats_on_invitation_delete();
+
+------------------------------------------------------------------
 -- stats view (replaces the K/L summary block in the sheet)
 ------------------------------------------------------------------
 CREATE VIEW v_invitation_stats AS

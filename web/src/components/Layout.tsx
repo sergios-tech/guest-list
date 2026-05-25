@@ -7,6 +7,7 @@ import {
 import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
+import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useTheme } from '@mui/material/styles';
 import { Link, useLocation } from 'react-router-dom';
@@ -40,6 +41,14 @@ export default function Layout({ children }: { children: ReactNode }) {
         >
           <ListItemIcon><PeopleIcon /></ListItemIcon>
           <ListItemText primary={t('nav.invitations')} />
+        </ListItemButton>
+        <ListItemButton
+          component={Link} to="/seating"
+          selected={loc.pathname.startsWith('/seating')}
+          onClick={() => setMobileOpen(false)}
+        >
+          <ListItemIcon><TableRestaurantIcon /></ListItemIcon>
+          <ListItemText primary={t('nav.seating')} />
         </ListItemButton>
       </List>
     </Box>

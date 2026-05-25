@@ -11,4 +11,7 @@ export const qk = {
   invitation: (id: string) => ['invitation', id] as const,
   attendees: (invitationId: string) => ['attendees', invitationId] as const,
   statsOverview: () => ['stats', 'overview'] as const,
+  seatingPlans: () => ['seating', 'plans'] as const,
+  seatingPlan: (id: string) => ['seating', 'plan', id] as const,
+  seatingUnseated: (planId: string) => ['seating', 'unseated', planId] as const,
 };

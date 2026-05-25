@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { AttendeesModule } from './modules/attendees/attendees.module';
 import { StatsModule } from './modules/stats/stats.module';
+import { SeatingModule } from './modules/seating/seating.module';
 import { HealthModule } from './modules/health/health.module';
 import { buildTypeOrmConfig } from './config/typeorm.config';
 
@@ -33,6 +34,7 @@ const throttlerStorage = redisUrl
     InvitationsModule,
     AttendeesModule,
     StatsModule,
+    SeatingModule,
     HealthModule,
   ],
   providers: [

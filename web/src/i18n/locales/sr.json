@@ -8,7 +8,8 @@
   "nav": {
     "dashboard": "Pregled",
     "invitations": "Pozivnice",
-    "addInvitation": "Dodaj pozivnicu"
+    "addInvitation": "Dodaj pozivnicu",
+    "seating": "Raspored stolova"
   },
   "login": {
     "title": "Prijava",
@@ -69,6 +70,44 @@
     "ODBIJENO": "Odbijeno",
     "POTVRDJEN_DOLAZAK": "Potvrđen dolazak"
   },
+  "seating": {
+    "title": "Raspored stolova",
+    "noPlans": "Još uvek nema rasporeda. Napravite prvi da biste počeli.",
+    "newPlan": "Novi raspored",
+    "createPlan": "Napravi raspored",
+    "planName": "Naziv rasporeda",
+    "planNamePh": "npr. Raspored sale v1",
+    "tableCount": "Broj stolova",
+    "seatsPerTable": "Broj mesta po stolu",
+    "deletePlan": "Obriši raspored",
+    "deletePlanConfirm": "Trajno obrisati ovaj raspored zajedno sa svim stolovima i rasporedom gostiju?",
+    "activate": "Označi kao aktivan",
+    "active": "Aktivan",
+    "activated": "Raspored je aktiviran.",
+    "planCreated": "Raspored je kreiran.",
+    "planDeleted": "Raspored je obrisan.",
+    "editTable": "Izmeni sto",
+    "tableLabel": "Naziv stola",
+    "seatCount": "Broj mesta za ovaj sto",
+    "tableUpdated": "Sto je izmenjen.",
+    "autoFill": "Automatski rasporedi",
+    "autoFillConfirmTitle": "Automatski rasporediti goste?",
+    "autoFillConfirm": "Automatski raspored grupiše potvrđene goste po pozivnicama i smešta ih za stolove. Označite 'obriši postojeće' za rad iz nule.",
+    "clearExisting": "Prvo obriši postojeći raspored",
+    "autoFillRunning": "Raspoređujem…",
+    "autoFillDone": "Raspoređeno {{count}} mesta.",
+    "autoFillSomeUnseated": "{{count}} gostiju nije raspoređeno — nema dovoljno mesta.",
+    "unseatedHeader": "Neraspoređeni gosti",
+    "unseatedCount": "Preostalo {{count}}",
+    "allSeated": "Svi su raspoređeni.",
+    "dragHint": "Prevucite gosta na mesto. Prevucite raspoređenog gosta ovde da biste ga uklonili sa mesta.",
+    "removeAssignment": "Ukloni sa mesta",
+    "tableNumberLabel": "Sto {{number}}",
+    "seatNumberLabel": "#{{number}}",
+    "emptySeat": "Slobodno",
+    "guestSlot": "Gost {{index}}",
+    "noConfirmedGuests": "Još uvek nema potvrđenih gostiju — prvo potvrdite pozivnice."
+  },
   "accommodation": {
     "NONE": "Bez smeštaja",
     "SIESTA_SINGLE": "Siesta — jednokrevetna",
@@ -83,6 +122,14 @@
     "INVITATION_CHECK_VIOLATION": "Izmena nije dozvoljena prema pravilima pozivnice.",
     "INVITATION_UNIQUE_VIOLATION": "Već postoji zapis koji se kosi sa ovim.",
     "INVITATION_FK_VIOLATION": "Referencirani zapis ne postoji.",
-    "INVITATION_CONFLICT": "Pozivnicu je u međuvremenu izmenio neko drugi. Učitana je najnovija verzija — primenite izmenu ponovo."
+    "INVITATION_CONFLICT": "Pozivnicu je u međuvremenu izmenio neko drugi. Učitana je najnovija verzija — primenite izmenu ponovo.",
+    "SEAT_DOUBLE_ASSIGNMENT": "Ovaj gost je već raspoređen u ovom rasporedu.",
+    "SEAT_ASSIGNMENT_INVALID": "Raspored mesta nije ispravan.",
+    "SEATING_PLAN_ONLY_ONE_ACTIVE": "Drugi raspored je već aktivan.",
+    "SEATING_PLAN_CONFLICT": "Ovaj raspored je u međuvremenu izmenio neko drugi. Učitajte najnoviju verziju.",
+    "SEATING_TABLE_SHRINK_OCCUPIED": "Nije moguće smanjiti — mesta iznad nove veličine su zauzeta. Prvo ih oslobodite.",
+    "SEATING_CHECK_VIOLATION": "Izmena rasporeda nije dozvoljena prema pravilima.",
+    "SEATING_UNIQUE_VIOLATION": "Već postoji zapis koji se kosi sa ovim.",
+    "SEATING_FK_VIOLATION": "Referencirani zapis ne postoji."
   }
 }

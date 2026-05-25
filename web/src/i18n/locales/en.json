@@ -8,7 +8,8 @@
   "nav": {
     "dashboard": "Dashboard",
     "invitations": "Invitations",
-    "addInvitation": "Add Invitation"
+    "addInvitation": "Add Invitation",
+    "seating": "Seating"
   },
   "login": {
     "title": "Sign in",
@@ -69,6 +70,44 @@
     "ODBIJENO": "Declined",
     "POTVRDJEN_DOLAZAK": "Confirmed"
   },
+  "seating": {
+    "title": "Seating arrangement",
+    "noPlans": "No seating plans yet. Create one to begin.",
+    "newPlan": "New plan",
+    "createPlan": "Create plan",
+    "planName": "Plan name",
+    "planNamePh": "e.g. Reception layout v1",
+    "tableCount": "Number of tables",
+    "seatsPerTable": "Seats per table",
+    "deletePlan": "Delete plan",
+    "deletePlanConfirm": "Permanently delete this plan and all its tables and seat assignments?",
+    "activate": "Set active",
+    "active": "Active",
+    "activated": "Plan activated.",
+    "planCreated": "Plan created.",
+    "planDeleted": "Plan deleted.",
+    "editTable": "Edit table",
+    "tableLabel": "Table label",
+    "seatCount": "Seats at this table",
+    "tableUpdated": "Table updated.",
+    "autoFill": "Auto-fill",
+    "autoFillConfirmTitle": "Auto-fill seats?",
+    "autoFillConfirm": "Auto-fill arranges confirmed guests by household into tables. Use 'clear existing' to start from a blank layout.",
+    "clearExisting": "Clear existing assignments first",
+    "autoFillRunning": "Filling seats…",
+    "autoFillDone": "{{count}} seats assigned.",
+    "autoFillSomeUnseated": "{{count}} guests could not be seated — not enough seats.",
+    "unseatedHeader": "Unseated guests",
+    "unseatedCount": "{{count}} remaining",
+    "allSeated": "Everyone is seated.",
+    "dragHint": "Drag a guest onto a seat. Drop a seated guest here to unseat.",
+    "removeAssignment": "Remove from seat",
+    "tableNumberLabel": "Table {{number}}",
+    "seatNumberLabel": "#{{number}}",
+    "emptySeat": "Empty",
+    "guestSlot": "Guest {{index}}",
+    "noConfirmedGuests": "No confirmed guests yet — confirm RSVPs first."
+  },
   "accommodation": {
     "NONE": "None",
     "SIESTA_SINGLE": "Siesta — single",
@@ -83,6 +122,14 @@
     "INVITATION_CHECK_VIOLATION": "That change is not allowed by the invitation rules.",
     "INVITATION_UNIQUE_VIOLATION": "A conflicting record already exists.",
     "INVITATION_FK_VIOLATION": "Referenced record not found.",
-    "INVITATION_CONFLICT": "This invitation was edited by someone else. The latest version was reloaded — please reapply your change."
+    "INVITATION_CONFLICT": "This invitation was edited by someone else. The latest version was reloaded — please reapply your change.",
+    "SEAT_DOUBLE_ASSIGNMENT": "This guest is already seated in this plan.",
+    "SEAT_ASSIGNMENT_INVALID": "Seat assignment is not valid.",
+    "SEATING_PLAN_ONLY_ONE_ACTIVE": "Another plan is already active.",
+    "SEATING_PLAN_CONFLICT": "This plan was edited by someone else. Reload to see the latest.",
+    "SEATING_TABLE_SHRINK_OCCUPIED": "Cannot shrink — seats above the new size are occupied. Clear them first.",
+    "SEATING_CHECK_VIOLATION": "Seating change is not allowed by the rules.",
+    "SEATING_UNIQUE_VIOLATION": "A conflicting seating record already exists.",
+    "SEATING_FK_VIOLATION": "Referenced record not found."
   }
 }
