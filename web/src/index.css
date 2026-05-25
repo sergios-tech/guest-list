@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body { margin: 0; font-family: Roboto, system-ui, sans-serif; }
+
+/* AG Grid: compact cell padding, subtle zebra striping, default header
+   colours from ag-theme-material. */
+.ag-theme-material {
+  --ag-grid-size: 6px;
+  --ag-list-item-height: 36px;
+  --ag-odd-row-background-color: #faf5fb;
+  --ag-row-border-color: #ede4ef;
+  --ag-border-color: #ede4ef;
+  --ag-font-family: Roboto, system-ui, sans-serif;
+}
+
+.ag-theme-material .ag-header-cell-text {
+  font-weight: 600;
+}
+
+/* Pinned bottom totals row — orange band echoing the xls footer. */
+.ag-theme-material .ag-row-pinned {
+  background-color: #f59e0b !important;
+  color: #1f1300;
+  font-weight: 700;
+}
+.ag-theme-material .ag-row-pinned .ag-cell {
+  border-top: 2px solid #b45309;
+}
