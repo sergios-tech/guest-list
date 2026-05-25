@@ -39,9 +39,10 @@ interface SeatProps {
   cx: number;
   cy: number;
   onHoist?: (invitationId: string) => void;
+  onUnseat?: (seatId: string) => void;
 }
 
-function Seat({ seat, cx, cy, onHoist }: SeatProps) {
+function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
   const { t } = useTranslation();
   const occupied = !!(seat.attendeeId || seat.invitationId);
   const displayName =
@@ -77,17 +78,28 @@ function Seat({ seat, cx, cy, onHoist }: SeatProps) {
         pointerEvents: 'auto',
       }}
     >
-      <Box
-        ref={setBothRefs}
-        {...(occupied ? drag.attributes : {})}
-        {...(occupied ? drag.listeners : {})}
-        role={occupied ? 'button' : undefined}
-        aria-label={
-          occupied
-            ? `${t('seating.seatNumberLabel', { number: seat.seatNumber })} — ${displayName ?? ''}`
-            : `${t('seating.seatNumberLabel', { number: seat.seatNumber })} ${t('seating.emptySeat')}`
-        }
-        sx={(theme) => ({
+      <Tooltip
+        title={occupied && onUnseat ? t('seating.clickToUnseat') : ''}
+        enterDelay={400}
+        disableHoverListener={!occupied || !onUnseat}
+      >
+        <Box
+          ref={setBothRefs}
+          {...(occupied ? drag.attributes : {})}
+          {...(occupied ? drag.listeners : {})}
+          onClick={(e) => {
+            // PointerSensor's 4px activation distance means a clean click
+            // without dragging fires this handler instead of starting a drag.
+            e.stopPropagation();
+            if (occupied && onUnseat) onUnseat(seat.id);
+          }}
+          role={occupied ? 'button' : undefined}
+          aria-label={
+            occupied
+              ? `${t('seating.seatNumberLabel', { number: seat.seatNumber })} — ${displayName ?? ''}`
+              : `${t('seating.seatNumberLabel', { number: seat.seatNumber })} ${t('seating.emptySeat')}`
+          }
+          sx={(theme) => ({
           width: SEAT_R * 2,
           height: SEAT_R * 2,
           borderRadius: '50%',
@@ -111,14 +123,15 @@ function Seat({ seat, cx, cy, onHoist }: SeatProps) {
           justifyContent: 'center',
           fontSize: 12,
           fontWeight: 600,
-          cursor: occupied ? 'grab' : 'default',
+          cursor: occupied ? (onUnseat ? 'pointer' : 'grab') : 'default',
           opacity: drag.isDragging ? 0.3 : 1,
           transition: 'background-color 80ms, border-color 80ms',
           userSelect: 'none',
         })}
-      >
-        {seat.seatNumber}
-      </Box>
+        >
+          {seat.seatNumber}
+        </Box>
+      </Tooltip>
       {displayName ? (
         <Tooltip
           title={onHoist && seat.householdInvitationId
@@ -163,10 +176,11 @@ interface TableCircleProps {
   totalTables: number;
   onEdit: (table: TableView) => void;
   onHoist?: (invitationId: string) => void;
+  onUnseat?: (seatId: string) => void;
 }
 
 export default function TableCircle({
-  table, totalTables, onEdit, onHoist,
+  table, totalTables, onEdit, onHoist, onUnseat,
 }: TableCircleProps) {
   const { t } = useTranslation();
   const positions = seatPositions(table.seatCount);
@@ -228,7 +242,14 @@ export default function TableCircle({
       {table.seats.map((seat, i) => {
         const pos = positions[i] ?? positions[0];
         return (
-          <Seat key={seat.id} seat={seat} cx={pos.cx} cy={pos.cy} onHoist={onHoist} />
+          <Seat
+            key={seat.id}
+            seat={seat}
+            cx={pos.cx}
+            cy={pos.cy}
+            onHoist={onHoist}
+            onUnseat={onUnseat}
+          />
         );
       })}
     </Paper>

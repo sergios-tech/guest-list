@@ -114,7 +114,8 @@
     "emptySeat": "Slobodno",
     "guestSlot": "Gost {{index}}",
     "noConfirmedGuests": "Još uvek nema potvrđenih gostiju — prvo potvrdite pozivnice.",
-    "pinHousehold": "klik za prikačiti pozivnicu na vrh"
+    "pinHousehold": "klik za prikačiti pozivnicu na vrh",
+    "clickToUnseat": "klik za uklanjanje sa mesta"
   },
   "accommodation": {
     "NONE": "Bez smeštaja",

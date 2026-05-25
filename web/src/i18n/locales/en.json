@@ -114,7 +114,8 @@
     "emptySeat": "Empty",
     "guestSlot": "Guest {{index}}",
     "noConfirmedGuests": "No confirmed guests yet — confirm RSVPs first.",
-    "pinHousehold": "click to pin household to top"
+    "pinHousehold": "click to pin household to top",
+    "clickToUnseat": "click to unseat"
   },
   "accommodation": {
     "NONE": "None",

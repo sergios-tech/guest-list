@@ -311,6 +311,7 @@ export default function Seating() {
                       totalTables={plan.tables.length}
                       onEdit={(t) => setDialog({ kind: 'editTable', table: t, planId: plan.id })}
                       onHoist={hoistHousehold}
+                      onUnseat={(seatId) => clearSeat.mutate(seatId)}
                     />
                   ))}
                 </Box>
