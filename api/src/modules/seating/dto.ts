@@ -27,6 +27,9 @@ export class UpdatePlanDto extends PartialType(CreatePlanDto) {
 }
 
 export class UpdateTableDto {
+  @IsOptional() @IsInt() @Min(1) @Max(200)
+  tableNumber?: number;
+
   @IsOptional() @IsInt() @Min(1) @Max(30)
   seatCount?: number;
 

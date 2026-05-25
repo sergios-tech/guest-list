@@ -87,6 +87,8 @@
     "planCreated": "Plan created.",
     "planDeleted": "Plan deleted.",
     "editTable": "Edit table",
+    "tableNumber": "Table number",
+    "ofTotal": "of {{total}}",
     "tableLabel": "Table label",
     "seatCount": "Seats at this table",
     "tableUpdated": "Table updated.",
@@ -128,6 +130,7 @@
     "SEATING_PLAN_ONLY_ONE_ACTIVE": "Another plan is already active.",
     "SEATING_PLAN_CONFLICT": "This plan was edited by someone else. Reload to see the latest.",
     "SEATING_TABLE_SHRINK_OCCUPIED": "Cannot shrink — seats above the new size are occupied. Clear them first.",
+    "SEATING_TABLE_NUMBER_TAKEN": "Another table already uses this number.",
     "SEATING_CHECK_VIOLATION": "Seating change is not allowed by the rules.",
     "SEATING_UNIQUE_VIOLATION": "A conflicting seating record already exists.",
     "SEATING_FK_VIOLATION": "Referenced record not found."

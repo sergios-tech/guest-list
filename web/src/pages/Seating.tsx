@@ -258,6 +258,7 @@ export default function Seating() {
                     <TableCircle
                       key={table.id}
                       table={table}
+                      totalTables={plan.tables.length}
                       onEdit={(t) => setDialog({ kind: 'editTable', table: t, planId: plan.id })}
                     />
                   ))}

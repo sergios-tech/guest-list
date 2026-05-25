@@ -87,6 +87,8 @@
     "planCreated": "Raspored je kreiran.",
     "planDeleted": "Raspored je obrisan.",
     "editTable": "Izmeni sto",
+    "tableNumber": "Broj stola",
+    "ofTotal": "od {{total}}",
     "tableLabel": "Naziv stola",
     "seatCount": "Broj mesta za ovaj sto",
     "tableUpdated": "Sto je izmenjen.",
@@ -128,6 +130,7 @@
     "SEATING_PLAN_ONLY_ONE_ACTIVE": "Drugi raspored je već aktivan.",
     "SEATING_PLAN_CONFLICT": "Ovaj raspored je u međuvremenu izmenio neko drugi. Učitajte najnoviju verziju.",
     "SEATING_TABLE_SHRINK_OCCUPIED": "Nije moguće smanjiti — mesta iznad nove veličine su zauzeta. Prvo ih oslobodite.",
+    "SEATING_TABLE_NUMBER_TAKEN": "Drugi sto već koristi ovaj broj.",
     "SEATING_CHECK_VIOLATION": "Izmena rasporeda nije dozvoljena prema pravilima.",
     "SEATING_UNIQUE_VIOLATION": "Već postoji zapis koji se kosi sa ovim.",
     "SEATING_FK_VIOLATION": "Referencirani zapis ne postoji."

@@ -33,6 +33,7 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
   const [seatsPerTable, setSeatsPerTable] = useState(8);
   const [label, setLabel] = useState('');
   const [seatCount, setSeatCount] = useState(8);
+  const [tableNumber, setTableNumber] = useState(1);
 
   useEffect(() => {
     if (!open || !mode) return;
@@ -43,6 +44,7 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
     } else {
       setLabel(mode.table.label ?? '');
       setSeatCount(mode.table.seatCount);
+      setTableNumber(mode.table.tableNumber);
     }
   }, [open, mode]);
 
@@ -67,6 +69,7 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
       await api.patch(`/seating/tables/${mode.table.id}`, {
         label: label.trim() || undefined,
         seatCount,
+        tableNumber,
       });
     },
     onSuccess: () => {
@@ -136,6 +139,15 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
+          <TextField
+            label={t('seating.tableNumber')}
+            type="number"
+            value={tableNumber}
+            onChange={(e) => setTableNumber(Math.max(1, Math.min(200, Number(e.target.value) || 0)))}
+            inputProps={{ min: 1, max: 200 }}
+            fullWidth
+            autoFocus
+          />
           <TextField
             label={t('seating.tableLabel')}
             value={label}

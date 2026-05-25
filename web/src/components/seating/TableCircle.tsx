@@ -142,10 +142,11 @@ function Seat({ seat, cx, cy }: SeatProps) {
 
 interface TableCircleProps {
   table: TableView;
+  totalTables: number;
   onEdit: (table: TableView) => void;
 }
 
-export default function TableCircle({ table, onEdit }: TableCircleProps) {
+export default function TableCircle({ table, totalTables, onEdit }: TableCircleProps) {
   const { t } = useTranslation();
   const positions = seatPositions(table.seatCount);
 
@@ -188,9 +189,14 @@ export default function TableCircle({ table, onEdit }: TableCircleProps) {
           boxShadow: theme.shadows[1],
         })}
       >
-        <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1 }}>
-          {table.tableNumber}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1 }}>
+            {table.tableNumber}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1 }}>
+            {t('seating.ofTotal', { total: totalTables })}
+          </Typography>
+        </Box>
         {table.label ? (
           <Typography variant="caption" sx={{ mt: 0.25, color: 'text.secondary' }}>
             {table.label}

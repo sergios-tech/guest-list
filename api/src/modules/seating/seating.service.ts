@@ -37,6 +37,12 @@ function rethrowDbError(err: unknown): never {
           message: 'This guest is already assigned to a seat in this plan.',
         });
       }
+      if (constraint === 'seating_table_plan_id_table_number_key') {
+        throw new ConflictException({
+          code: 'SEATING_TABLE_NUMBER_TAKEN',
+          message: 'Another table already uses this number.',
+        });
+      }
       throw new ConflictException({
         code: 'SEATING_UNIQUE_VIOLATION',
         message: 'A conflicting seating record already exists.',
@@ -315,12 +321,17 @@ export class SeatingService {
     if (!table) throw new NotFoundException(`Seating table ${id} not found`);
 
     if (dto.label !== undefined) table.label = dto.label || null;
+    if (dto.tableNumber !== undefined) table.tableNumber = dto.tableNumber;
 
     if (dto.seatCount !== undefined && dto.seatCount !== table.seatCount) {
       await this.resizeTable(table, dto.seatCount);
     }
 
-    await this.tables.save(table);
+    try {
+      await this.tables.save(table);
+    } catch (err) {
+      rethrowDbError(err);
+    }
     return this.findTable(id);
   }
 
