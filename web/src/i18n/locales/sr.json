@@ -115,7 +115,11 @@
     "guestSlot": "Gost {{index}}",
     "noConfirmedGuests": "Još uvek nema potvrđenih gostiju — prvo potvrdite pozivnice.",
     "pinHousehold": "klik za prikačiti pozivnicu na vrh",
-    "clickToUnseat": "klik za uklanjanje sa mesta"
+    "clickToUnseat": "klik za uklanjanje sa mesta",
+    "unseatAll": "Ukloni sve",
+    "unseatAllConfirmTitle": "Ukloniti sve goste sa mesta?",
+    "unseatAllConfirm": "Uklanja svakog gosta sa njegovog mesta u ovom rasporedu. Stolovi i broj mesta ostaju isti.",
+    "unseatAllDone": "Uklonjeno {{count}} gostiju."
   },
   "accommodation": {
     "NONE": "Bez smeštaja",

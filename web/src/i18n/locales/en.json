@@ -115,7 +115,11 @@
     "guestSlot": "Guest {{index}}",
     "noConfirmedGuests": "No confirmed guests yet — confirm RSVPs first.",
     "pinHousehold": "click to pin household to top",
-    "clickToUnseat": "click to unseat"
+    "clickToUnseat": "click to unseat",
+    "unseatAll": "Unseat all",
+    "unseatAllConfirmTitle": "Unseat everyone?",
+    "unseatAllConfirm": "Remove every guest from their seat in this plan. The table layout (tables and seat counts) stays the same.",
+    "unseatAllDone": "{{count}} guests unseated."
   },
   "accommodation": {
     "NONE": "None",

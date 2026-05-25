@@ -521,6 +521,18 @@ export class SeatingService {
     return { swapped: true };
   }
 
+  async unseatAll(planId: string) {
+    const plan = await this.plans.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
+    const result = await this.seats.createQueryBuilder()
+      .update()
+      .set({ attendeeId: null, invitationId: null, slotIndex: null })
+      .where('plan_id = :p', { p: planId })
+      .andWhere('(attendee_id IS NOT NULL OR invitation_id IS NOT NULL)')
+      .execute();
+    return { clearedCount: result.affected ?? 0 };
+  }
+
   // ---------------- auto-fill ----------------
 
   async autoFill(planId: string, dto: AutoFillDto) {

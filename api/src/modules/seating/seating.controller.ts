@@ -65,6 +65,11 @@ export class SeatingController {
     return this.svc.autoFill(id, dto);
   }
 
+  @Post('plans/:id/unseat-all')
+  unseatAll(@Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.unseatAll(id);
+  }
+
   // --- tables ---
   @Post('plans/:id/tables')
   addTable(

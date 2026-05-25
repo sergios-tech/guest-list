@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Button, Chip, CircularProgress, Grid, Paper, Stack, Typography,
+  Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  DialogContentText, DialogTitle, Grid, Paper, Stack, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import EventSeatIcon from '@mui/icons-material/EventSeat';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
@@ -62,6 +64,7 @@ export default function Seating() {
   // Invitation ids pinned to the top of the unseated sidebar, most recent
   // first. Resets when the plan changes since pins are plan-specific intent.
   const [pinned, setPinned] = useState<string[]>([]);
+  const [confirmUnseatAll, setConfirmUnseatAll] = useState(false);
 
   function hoistHousehold(invitationId: string) {
     setPinned((prev) => [invitationId, ...prev.filter((x) => x !== invitationId)]);
@@ -125,6 +128,19 @@ export default function Seating() {
     mutationFn: async (v: { seatAId: string; seatBId: string }) =>
       (await api.post('/seating/seats/swap', v)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['seating'] }),
+    onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
+  });
+
+  const unseatAll = useMutation<{ clearedCount: number }>({
+    mutationFn: async () => {
+      if (!plan) return { clearedCount: 0 };
+      return (await api.post(`/seating/plans/${plan.id}/unseat-all`, {})).data;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['seating'] });
+      snackbar.show(t('seating.unseatAllDone', { count: data.clearedCount }), 'success');
+      setConfirmUnseatAll(false);
+    },
     onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
   });
 
@@ -294,6 +310,16 @@ export default function Seating() {
                   >
                     {t('seating.addTable')}
                   </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="warning"
+                    startIcon={<EventSeatIcon />}
+                    onClick={() => setConfirmUnseatAll(true)}
+                    disabled={!hasSeated || unseatAll.isPending}
+                  >
+                    {t('seating.unseatAll')}
+                  </Button>
                   <AutoFillButton planId={plan.id} hasSeated={hasSeated} />
                 </Stack>
                 <Box
@@ -337,6 +363,24 @@ export default function Seating() {
         onClose={() => setDialog(null)}
         onPlanCreated={(p) => setSelectedId(p.id)}
       />
+
+      <Dialog open={confirmUnseatAll} onClose={() => setConfirmUnseatAll(false)}>
+        <DialogTitle>{t('seating.unseatAllConfirmTitle')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{t('seating.unseatAllConfirm')}</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmUnseatAll(false)}>{t('invitation.cancel')}</Button>
+          <Button
+            color="warning"
+            variant="contained"
+            onClick={() => unseatAll.mutate()}
+            disabled={unseatAll.isPending}
+          >
+            {t('seating.unseatAll')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }
