@@ -5,7 +5,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SeatingService } from './seating.service';
 import {
-  AssignSeatDto, AutoFillDto, CreatePlanDto, SwapSeatsDto,
+  AssignSeatDto, AutoFillDto, CreatePlanDto, CreateTableDto, SwapSeatsDto,
   UpdatePlanDto, UpdateTableDto,
 } from './dto';
 
@@ -66,12 +66,25 @@ export class SeatingController {
   }
 
   // --- tables ---
+  @Post('plans/:id/tables')
+  addTable(
+    @Param('id', ParseUUIDPipe) planId: string,
+    @Body() dto: CreateTableDto,
+  ) {
+    return this.svc.addTable(planId, dto);
+  }
+
   @Patch('tables/:id')
   updateTable(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTableDto,
   ) {
     return this.svc.updateTable(id, dto);
+  }
+
+  @Delete('tables/:id')
+  removeTable(@Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.removeTable(id);
   }
 
   // --- seats ---

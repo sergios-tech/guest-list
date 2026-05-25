@@ -12,7 +12,7 @@ import { SeatingTable } from '../../entities/seating-table.entity';
 import { Seat } from '../../entities/seat.entity';
 import { Invitation, RsvpStatus } from '../../entities/invitation.entity';
 import {
-  AssignSeatDto, AutoFillDto, CreatePlanDto, SwapSeatsDto,
+  AssignSeatDto, AutoFillDto, CreatePlanDto, CreateTableDto, SwapSeatsDto,
   UpdatePlanDto, UpdateTableDto,
 } from './dto';
 
@@ -315,6 +315,64 @@ export class SeatingService {
   }
 
   // ---------------- tables ----------------
+
+  async addTable(planId: string, dto: CreateTableDto) {
+    const plan = await this.plans.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
+
+    return this.ds.transaction(async (em) => {
+      const tableRepo = em.getRepository(SeatingTable);
+      // Pick the next available table number when the client doesn't supply one.
+      // MAX + 1 keeps gaps if the user deleted a middle table — gap-filling
+      // would surprise users who pick numbers to match the physical room.
+      let tableNumber = dto.tableNumber;
+      if (tableNumber === undefined) {
+        const row = await tableRepo
+          .createQueryBuilder('t')
+          .select('COALESCE(MAX(t.table_number), 0)', 'max')
+          .where('t.plan_id = :p', { p: planId })
+          .getRawOne<{ max: string }>();
+        tableNumber = Number(row?.max ?? 0) + 1;
+      }
+
+      const table = tableRepo.create({
+        planId,
+        tableNumber,
+        seatCount: dto.seatCount,
+        label: dto.label ?? null,
+      });
+      const saved = await tableRepo.save(table);
+
+      const seatRows: Partial<Seat>[] = [];
+      for (let s = 1; s <= dto.seatCount; s++) {
+        seatRows.push({ planId, tableId: saved.id, seatNumber: s });
+      }
+      await em.getRepository(Seat).save(seatRows);
+      return saved;
+    }).catch(rethrowDbError);
+  }
+
+  async removeTable(id: string) {
+    const table = await this.tables.findOne({ where: { id } });
+    if (!table) throw new NotFoundException(`Seating table ${id} not found`);
+
+    // Refuse to drop a table that's holding seated guests — matches the
+    // shrink-occupied policy so the user can never silently lose arrangements.
+    const occupied = await this.seats
+      .createQueryBuilder('s')
+      .where('s.table_id = :t', { t: table.id })
+      .andWhere('(s.attendee_id IS NOT NULL OR s.invitation_id IS NOT NULL)')
+      .getCount();
+    if (occupied > 0) {
+      throw new UnprocessableEntityException({
+        code: 'SEATING_TABLE_DELETE_OCCUPIED',
+        message: 'Cannot delete a table with seated guests. Clear them first.',
+      });
+    }
+
+    await this.tables.remove(table);
+    return { id, deleted: true };
+  }
 
   async updateTable(id: string, dto: UpdateTableDto) {
     const table = await this.tables.findOne({ where: { id } });

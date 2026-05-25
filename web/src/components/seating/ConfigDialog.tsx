@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
-  Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField,
+  Box, Button, Dialog, DialogActions, DialogContent, DialogContentText,
+  DialogTitle, Stack, TextField,
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/DeleteOutline';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../lib/api';
@@ -34,6 +36,7 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
   const [label, setLabel] = useState('');
   const [seatCount, setSeatCount] = useState(8);
   const [tableNumber, setTableNumber] = useState(1);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!open || !mode) return;
@@ -75,6 +78,20 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['seating'] });
       snackbar.show(t('seating.tableUpdated'), 'success');
+      onClose();
+    },
+    onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
+  });
+
+  const deleteTable = useMutation({
+    mutationFn: async () => {
+      if (!mode || mode.kind !== 'editTable') return;
+      await api.delete(`/seating/tables/${mode.table.id}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['seating'] });
+      snackbar.show(t('seating.tableDeleted'), 'success');
+      setConfirmDelete(false);
       onClose();
     },
     onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
@@ -164,16 +181,44 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
           />
         </Stack>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{t('invitation.cancel')}</Button>
+      <DialogActions sx={{ justifyContent: 'space-between', px: 3 }}>
         <Button
-          variant="contained"
-          onClick={() => updateTable.mutate()}
-          disabled={updateTable.isPending}
+          color="error"
+          startIcon={<DeleteIcon />}
+          onClick={() => setConfirmDelete(true)}
         >
-          {t('invitation.save')}
+          {t('seating.deleteTable')}
         </Button>
+        <Box>
+          <Button onClick={onClose}>{t('invitation.cancel')}</Button>
+          <Button
+            variant="contained"
+            onClick={() => updateTable.mutate()}
+            disabled={updateTable.isPending}
+            sx={{ ml: 1 }}
+          >
+            {t('invitation.save')}
+          </Button>
+        </Box>
       </DialogActions>
+
+      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)}>
+        <DialogTitle>{t('seating.deleteTable')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{t('seating.deleteTableConfirm')}</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete(false)}>{t('invitation.cancel')}</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => deleteTable.mutate()}
+            disabled={deleteTable.isPending}
+          >
+            {t('invitation.delete')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

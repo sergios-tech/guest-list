@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Chip, CircularProgress, Grid, Paper, Stack, Typography,
+  Box, Button, Chip, CircularProgress, Grid, Paper, Stack, Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
@@ -112,6 +113,30 @@ export default function Seating() {
     mutationFn: async (v: { seatAId: string; seatBId: string }) =>
       (await api.post('/seating/seats/swap', v)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['seating'] }),
+    onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
+  });
+
+  const addTable = useMutation({
+    mutationFn: async () => {
+      if (!plan) return;
+      // Default the new table's seat count to whatever's most common in the
+      // plan — keeps the layout uniform when the user just wants "one more
+      // like the others". Falls back to 8 if the plan has no tables yet.
+      const counts = new Map<number, number>();
+      for (const tbl of plan.tables) {
+        counts.set(tbl.seatCount, (counts.get(tbl.seatCount) ?? 0) + 1);
+      }
+      let mode = 8;
+      let best = 0;
+      for (const [c, n] of counts) {
+        if (n > best) { best = n; mode = c; }
+      }
+      await api.post(`/seating/plans/${plan.id}/tables`, { seatCount: mode });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['seating'] });
+      snackbar.show(t('seating.tableAdded'), 'success');
+    },
     onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
   });
 
@@ -235,7 +260,7 @@ export default function Seating() {
             </Grid>
             <Grid item xs={12} md={9} lg={9.5}>
               <Stack spacing={2}>
-                <Stack direction="row" spacing={1} alignItems="center">
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                   <Typography variant="h6" sx={{ flexGrow: 1 }}>
                     {plan.name}
                   </Typography>
@@ -244,6 +269,15 @@ export default function Seating() {
                     variant="outlined"
                     label={`${plan.tables.length} × ${plan.tables[0]?.seatCount ?? 0}`}
                   />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() => addTable.mutate()}
+                    disabled={addTable.isPending}
+                  >
+                    {t('seating.addTable')}
+                  </Button>
                   <AutoFillButton planId={plan.id} hasSeated={hasSeated} />
                 </Stack>
                 <Box

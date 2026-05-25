@@ -37,6 +37,18 @@ export class UpdateTableDto {
   label?: string;
 }
 
+export class CreateTableDto {
+  @IsInt() @Min(1) @Max(30)
+  seatCount!: number;
+
+  // Optional: omit and the server picks max(tableNumber) + 1.
+  @IsOptional() @IsInt() @Min(1) @Max(200)
+  tableNumber?: number;
+
+  @IsOptional() @IsString() @MaxLength(120)
+  label?: string;
+}
+
 // Exactly one of {attendeeId} OR {invitationId, slotIndex} must be set.
 // We accept all three fields and enforce the XOR with @ValidateIf so the
 // payload mirrors the schema's chk_seat_one_assignment.
