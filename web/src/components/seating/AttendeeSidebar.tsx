@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import {
-  Box, Chip, Paper, Stack, Typography, Divider,
+  Box, Chip, IconButton, InputAdornment, Paper, Stack, TextField,
+  Typography, Divider,
 } from '@mui/material';
 import PushPinIcon from '@mui/icons-material/PushPin';
+import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Close';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { useTranslation } from 'react-i18next';
 import {
@@ -53,14 +57,27 @@ interface AttendeeSidebarProps {
 
 export default function AttendeeSidebar({ unseated, pinned, onHoist }: AttendeeSidebarProps) {
   const { t } = useTranslation();
+  const [query, setQuery] = useState('');
 
   // Drop here to unassign whatever is being dragged. The sidebar accepts both
   // unseated chips (no-op) and seated chips (clears the seat).
   const { setNodeRef, isOver } = useDroppable({ id: 'sidebar' });
 
+  // Filter first: a unit passes if either the household label OR the
+  // attendee name (when present) contains the query. Case- and
+  // diacritic-insensitive via toLocaleLowerCase so 'ivan' matches 'Ivan'.
+  const q = query.trim().toLocaleLowerCase();
+  const matches = (u: UnseatedUnit) => {
+    if (!q) return true;
+    if (u.invitationLabel.toLocaleLowerCase().includes(q)) return true;
+    if (u.kind === 'attendee' && u.attendeeName.toLocaleLowerCase().includes(q)) return true;
+    return false;
+  };
+  const filtered = unseated.filter(matches);
+
   // Group by invitation so a household stays visually together.
   const byInvitation = new Map<string, { label: string; units: UnseatedUnit[] }>();
-  for (const u of unseated) {
+  for (const u of filtered) {
     const bucket = byInvitation.get(u.invitationId) ?? { label: u.invitationLabel, units: [] };
     bucket.units.push(u);
     byInvitation.set(u.invitationId, bucket);
@@ -104,9 +121,37 @@ export default function AttendeeSidebar({ unseated, pinned, onHoist }: AttendeeS
         <Typography variant="caption" color="text.secondary">
           {unseated.length === 0
             ? t('seating.allSeated')
-            : t('seating.unseatedCount', { count: unseated.length })}
+            : query
+              ? t('seating.unseatedFiltered', { shown: filtered.length, total: unseated.length })
+              : t('seating.unseatedCount', { count: unseated.length })}
         </Typography>
       </Box>
+      <TextField
+        size="small"
+        placeholder={t('seating.searchUnseated')}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        disabled={unseated.length === 0}
+        fullWidth
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+          endAdornment: query ? (
+            <InputAdornment position="end">
+              <IconButton
+                size="small"
+                onClick={() => setQuery('')}
+                aria-label={t('seating.searchClear')}
+              >
+                <ClearIcon fontSize="small" />
+              </IconButton>
+            </InputAdornment>
+          ) : undefined,
+        }}
+      />
       <Typography variant="caption" color="text.secondary">
         {t('seating.dragHint')}
       </Typography>
@@ -114,7 +159,9 @@ export default function AttendeeSidebar({ unseated, pinned, onHoist }: AttendeeS
       <Box sx={{ overflowY: 'auto', flex: 1, pr: 0.5 }}>
         {groups.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
-            {t('seating.noConfirmedGuests')}
+            {query && unseated.length > 0
+              ? t('seating.searchNoMatch')
+              : t('seating.noConfirmedGuests')}
           </Typography>
         ) : (
           <Stack spacing={1.25} sx={{ pt: 1 }}>
