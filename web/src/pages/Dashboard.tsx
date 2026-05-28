@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, Typography, Grid, Skeleton } from '@mui/material';
+import { Box, Card, CardContent, Typography, Grid, Skeleton } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { qk } from '../lib/queryKeys';
+import { useAuth } from '../lib/auth';
+import SyncFromGoogleButton from '../components/SyncFromGoogleButton';
 
 interface Stats {
   pending: number;
@@ -30,13 +32,21 @@ function Tile({ label, value, loading }: { label: string; value?: number; loadin
 
 export default function Dashboard() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const canSync = user?.role === 'OWNER' || user?.role === 'EDITOR';
   const { data, isLoading } = useQuery<Stats>({
     queryKey: qk.statsOverview(),
     queryFn: async () => (await api.get('/stats/overview')).data,
   });
 
   return (
-    <Grid container spacing={2}>
+    <>
+      {canSync && (
+        <Box sx={{ mb: 2 }}>
+          <SyncFromGoogleButton />
+        </Box>
+      )}
+      <Grid container spacing={2}>
       {([
         ['stats.totalInvites',       data?.totalInvites],
         ['stats.confirmedInvites',   data?.confirmedInvites],
@@ -51,6 +61,7 @@ export default function Dashboard() {
           <Tile label={t(key)} value={value} loading={isLoading} />
         </Grid>
       ))}
-    </Grid>
+      </Grid>
+    </>
   );
 }

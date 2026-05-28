@@ -46,6 +46,24 @@ CREATE TABLE app_user (
 CREATE INDEX ix_app_user_active ON app_user (id) WHERE deleted_at IS NULL;
 
 ------------------------------------------------------------------
+-- google credentials (per-user OAuth refresh tokens for Sheets sync)
+------------------------------------------------------------------
+-- Refresh tokens are encrypted at rest with AES-256-GCM. The API decrypts
+-- on demand to drive googleapis. Access tokens are NEVER stored — the
+-- google-auth-library refreshes them in memory before each Sheets call.
+CREATE TABLE user_google_credential (
+  user_id            uuid PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+  refresh_token_enc  text   NOT NULL,                       -- base64 ciphertext
+  refresh_token_iv   text   NOT NULL,                       -- base64 12-byte IV
+  refresh_token_tag  text   NOT NULL,                       -- base64 16-byte GCM tag
+  google_account     text,                                   -- email of connected identity (display only)
+  connected_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now()
+);
+-- trg_user_google_credential_touch is created below alongside the other
+-- touch_updated_at triggers (the trigger function is defined further down).
+
+------------------------------------------------------------------
 -- invitations (one row = one household / party invite)
 ------------------------------------------------------------------
 CREATE TABLE invitation (
@@ -117,6 +135,10 @@ CREATE TRIGGER trg_attendee_touch
 
 CREATE TRIGGER trg_user_touch
   BEFORE UPDATE ON app_user
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TRIGGER trg_user_google_credential_touch
+  BEFORE UPDATE ON user_google_credential
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 ------------------------------------------------------------------

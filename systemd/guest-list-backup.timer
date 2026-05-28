@@ -1,0 +1,14 @@
+[Unit]
+Description=Run guest-list backup daily at ~03:07 UTC
+# If the system was off at the scheduled time, run once on next boot.
+# RandomizedDelaySec spreads firing across a small window so a flaky network
+# or busy disk doesn't see every timer race for resources at the same instant.
+
+[Timer]
+OnCalendar=*-*-* 03:07:00 UTC
+Persistent=true
+RandomizedDelaySec=3min
+Unit=guest-list-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,69 @@
+name: Deploy to guests.sergiotech.com
+
+on:
+  push:
+    # Repo branch is currently `master`; if/when renamed to `main` this picks
+    # it up automatically. List both rather than guessing which one is live.
+    branches: [main, master]
+  workflow_dispatch: {}
+
+concurrency:
+  # Coalesce overlapping pushes — only the latest commit matters.
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          # Write the deploy private key. Trailing newline is mandatory or
+          # ssh-agent rejects it as malformed.
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Pull, rebuild, restart, wait for healthy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" bash <<'EOF'
+            set -euo pipefail
+            cd /home/ubuntu/projects/guest-list
+
+            # CI is the source of truth. Reset any drift on the server.
+            git fetch --prune
+            git reset --hard "@{u}"
+
+            # Pull any new base images (postgres, redis, nginx alpine). Build
+            # api/web from source. --remove-orphans clears containers from
+            # services we've since dropped.
+            docker compose pull
+            docker compose up -d --build --remove-orphans
+
+            # Prune dangling images so /var/lib/docker doesn't grow forever.
+            docker image prune -f
+
+            # Wait up to 90s for the API health to flip to "healthy".
+            API_CID="$(docker compose ps -q api)"
+            for i in $(seq 1 30); do
+              STATUS="$(docker inspect -f '{{.State.Health.Status}}' "$API_CID" 2>/dev/null || echo unknown)"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "api healthy after ${i} attempt(s)"
+                exit 0
+              fi
+              sleep 3
+            done
+
+            echo "api did not become healthy in 90s" >&2
+            docker compose logs --tail 200 api >&2
+            exit 1
+          EOF

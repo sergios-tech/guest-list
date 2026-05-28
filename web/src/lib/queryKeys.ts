@@ -14,4 +14,5 @@ export const qk = {
   seatingPlans: () => ['seating', 'plans'] as const,
   seatingPlan: (id: string) => ['seating', 'plan', id] as const,
   seatingUnseated: (planId: string) => ['seating', 'unseated', planId] as const,
+  googleSyncStatus: () => ['google-sync', 'status'] as const,
 };

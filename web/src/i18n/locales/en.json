@@ -123,7 +123,9 @@
     "unseatAll": "Unseat all",
     "unseatAllConfirmTitle": "Unseat everyone?",
     "unseatAllConfirm": "Remove every guest from their seat in this plan. The table layout (tables and seat counts) stays the same.",
-    "unseatAllDone": "{{count}} guests unseated."
+    "unseatAllDone": "{{count}} guests unseated.",
+    "seatCleared": "Seat cleared.",
+    "undo": "Undo"
   },
   "accommodation": {
     "NONE": "None",
@@ -131,6 +133,24 @@
     "SIESTA_DOUBLE": "Siesta — double",
     "SIESTA_APARTMENT": "Siesta — apartment",
     "ARIA": "Aria"
+  },
+  "sync": {
+    "connectGoogle": "Connect Google",
+    "notConnectedHelp": "Authorise once to import your guest list from Google Sheets.",
+    "connectSuccess": "Google account connected.",
+    "connectError": "Could not connect: {{message}}",
+    "syncFromGoogleSheet": "Sync from Google Sheet",
+    "syncing": "Syncing…",
+    "connected": "Connected as {{email}}",
+    "disconnect": "Disconnect",
+    "disconnected": "Google account disconnected.",
+    "confirmTitle": "Sync from Google Sheet?",
+    "confirmBody": "Rows from the sheet will be matched to invitations by guest name. New rows are added; existing rows are overwritten with sheet values, so edits made in this app since the last sync will be lost. Continue?",
+    "completed": "Sync done — {{inserted}} added, {{updated}} updated.",
+    "completedWithErrors": "Sync done with issues — {{inserted}} added, {{updated}} updated, {{errorCount}} row(s) failed.",
+    "errorsHeader": "Rows that did not sync",
+    "rowLabel": "Row {{row}}",
+    "errorsTruncated": "…and {{count}} more"
   },
   "errors": {
     "GENERIC": "Something went wrong. Please try again.",

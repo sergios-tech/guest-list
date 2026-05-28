@@ -123,7 +123,9 @@
     "unseatAll": "Ukloni sve",
     "unseatAllConfirmTitle": "Ukloniti sve goste sa mesta?",
     "unseatAllConfirm": "Uklanja svakog gosta sa njegovog mesta u ovom rasporedu. Stolovi i broj mesta ostaju isti.",
-    "unseatAllDone": "Uklonjeno {{count}} gostiju."
+    "unseatAllDone": "Uklonjeno {{count}} gostiju.",
+    "seatCleared": "Mesto je oslobođeno.",
+    "undo": "Vrati"
   },
   "accommodation": {
     "NONE": "Bez smeštaja",
@@ -131,6 +133,24 @@
     "SIESTA_DOUBLE": "Siesta — dvokrevetna",
     "SIESTA_APARTMENT": "Siesta — apartman",
     "ARIA": "Aria"
+  },
+  "sync": {
+    "connectGoogle": "Poveži Google",
+    "notConnectedHelp": "Jednom autorizujte da biste uvozili spisak gostiju iz Google Sheets.",
+    "connectSuccess": "Google nalog je povezan.",
+    "connectError": "Povezivanje nije uspelo: {{message}}",
+    "syncFromGoogleSheet": "Sinhronizuj iz Google Sheet-a",
+    "syncing": "Sinhronizacija…",
+    "connected": "Povezan kao {{email}}",
+    "disconnect": "Prekini vezu",
+    "disconnected": "Google nalog je odvezan.",
+    "confirmTitle": "Sinhronizovati iz Google Sheet-a?",
+    "confirmBody": "Redovi iz tabele biće upareni sa pozivnicama po imenu gosta. Novi redovi se dodaju; postojeći se prepisuju vrednostima iz tabele, pa će izmene unete u aplikaciji nakon poslednje sinhronizacije biti izgubljene. Nastaviti?",
+    "completed": "Sinhronizacija završena — dodato {{inserted}}, izmenjeno {{updated}}.",
+    "completedWithErrors": "Sinhronizacija završena uz greške — dodato {{inserted}}, izmenjeno {{updated}}, {{errorCount}} reda nije sinhronizovano.",
+    "errorsHeader": "Redovi koji nisu sinhronizovani",
+    "rowLabel": "Red {{row}}",
+    "errorsTruncated": "…još {{count}}"
   },
   "errors": {
     "GENERIC": "Došlo je do greške. Pokušajte ponovo.",

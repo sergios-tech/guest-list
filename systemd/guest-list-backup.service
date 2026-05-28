@@ -1,0 +1,17 @@
+[Unit]
+Description=guest-list nightly Postgres backup
+# Wait for docker, otherwise the script's `docker compose exec` fails on boot.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/projects/guest-list
+ExecStart=/home/ubuntu/projects/guest-list/scripts/backup.sh
+# Hard cap so a stuck docker exec can't pile up indefinitely.
+TimeoutStartSec=10min
+# Journal-only logging — `journalctl -u guest-list-backup` to inspect.
+StandardOutput=journal
+StandardError=journal

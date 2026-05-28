@@ -9,6 +9,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
 import { AttendeesModule } from './modules/attendees/attendees.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { SeatingModule } from './modules/seating/seating.module';
+import { GoogleSyncModule } from './modules/google-sync/google-sync.module';
 import { HealthModule } from './modules/health/health.module';
 import { buildTypeOrmConfig } from './config/typeorm.config';
 
@@ -35,6 +36,7 @@ const throttlerStorage = redisUrl
     AttendeesModule,
     StatsModule,
     SeatingModule,
+    GoogleSyncModule,
     HealthModule,
   ],
   providers: [

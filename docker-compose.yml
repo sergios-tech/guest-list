@@ -42,8 +42,23 @@ services:
       JWT_SECRET: "${JWT_SECRET:?must be set in .env, generate with openssl rand -base64 48}"
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
       REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
+      # Set this to the public origin(s) in prod (e.g. https://guests.sergiotech.com).
+      # The localhost defaults exist only for `docker compose up` on a dev laptop.
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}"
       PORT: "3000"
+      # Google Sheets sync (Dashboard "Sync from Google Sheet" button).
+      # Required: provision an OAuth client at console.cloud.google.com →
+      # APIs & Services → Credentials → OAuth client ID (Web application).
+      # Authorized redirect URI must match GOOGLE_OAUTH_REDIRECT_URI.
+      GOOGLE_OAUTH_CLIENT_ID: "${GOOGLE_OAUTH_CLIENT_ID:-}"
+      GOOGLE_OAUTH_CLIENT_SECRET: "${GOOGLE_OAUTH_CLIENT_SECRET:-}"
+      GOOGLE_OAUTH_REDIRECT_URI: "${GOOGLE_OAUTH_REDIRECT_URI:-http://localhost:8080/api/google-sync/oauth/callback}"
+      # AES-256-GCM key for refresh-token-at-rest encryption.
+      # Generate with: openssl rand -hex 32  (must be 64 hex chars).
+      GOOGLE_TOKEN_ENC_KEY: "${GOOGLE_TOKEN_ENC_KEY:?must be set in .env, generate with openssl rand -hex 32}"
+      # The sheet to read from. Defaults to the production wedding sheet.
+      GOOGLE_SHEET_ID: "${GOOGLE_SHEET_ID:-1gsydyLPpQH3bJoppdZoLYjlq3zKexlc-qWnuYnujeQM}"
+      GOOGLE_SHEET_TAB: "${GOOGLE_SHEET_TAB:-Pozivnice}"
     depends_on:
       db:
         condition: service_healthy
@@ -62,11 +77,21 @@ services:
 
   nginx:
     image: nginx:alpine
+    # Stable container name so the sergio-tech nginx-proxy can reach us by
+    # hostname over the shared external network (see networks.proxy below).
+    container_name: guest-list-nginx
     restart: unless-stopped
-    ports:
-      - "${WEB_PORT:-8080}:80"
+    # No host port binding in prod — only the sergio-tech nginx-proxy talks to us
+    # via the shared docker network. For local laptop dev, override with
+    #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+    # or temporarily add a `ports:` block.
+    expose:
+      - "80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - default
+      - proxy
     depends_on:
       api:
         # Gate nginx on api being healthy — Nest takes ~3-8s to boot
@@ -75,6 +100,17 @@ services:
         condition: service_healthy
       web:
         condition: service_started
+
+networks:
+  default:
+  # External network created by /home/ubuntu/sergio-tech/docker-compose.yml.
+  # Joining it lets sergio-tech's nginx-proxy resolve `guest-list-nginx` by
+  # hostname and route guests.sergiotech.com traffic to us. Created with
+  #   docker network create sergio-tech_proxy
+  # (or auto-created by `docker compose up` in /home/ubuntu/sergio-tech).
+  proxy:
+    external: true
+    name: sergio-tech_proxy
 
 volumes:
   pgdata:

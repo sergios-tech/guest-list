@@ -75,7 +75,7 @@ Things the DB enforces that the app relies on:
 `api/src/modules/` follows NestJS-per-feature, but with two quirks:
 
 - **`attendees.module.ts` is a single file** containing DTOs, `AttendeesService`, `AttendeesController`, and the `@Module` declaration. Don't expect separate files.
-- **`RolesGuard` exists but is not applied per-route.** `@Roles('OWNER', 'EDITOR')` and the guard are defined in `auth/jwt-auth.guard.ts`, but no controller uses them yet. Apply them when locking down writes — that's the intended extension point.
+- **`RolesGuard`** is defined in `auth/jwt-auth.guard.ts` and applied on `InvitationsController`, `AttendeesController`, and `GoogleSyncController`. Use `@UseGuards(JwtAuthGuard, RolesGuard)` on the class and `@Roles(...)` per handler to gate new endpoints.
 
 Global `ValidationPipe` is configured with `whitelist: true, transform: true, forbidNonWhitelisted: true` in `main.ts`. Extra body fields cause a 400; rely on this rather than re-validating in services.
 
@@ -93,7 +93,35 @@ All routes are prefixed `/api` (`app.setGlobalPrefix('api')` in `main.ts`), so n
 
 ### Ingress
 
-`nginx/default.conf` is the only public entrypoint (`:8080`). `/api/*` proxies to the `api` service; everything else proxies to the `web` container which serves the built SPA and handles the SPA fallback locally (`web/web-nginx.conf`).
+`nginx/default.conf` is the only public entrypoint. In dev the `nginx` service is reached via host port `8080`; **in prod that port binding is removed** and the container instead joins the external `sergio-tech_proxy` network, where the sergio-tech `nginx-proxy` (TLS terminator at `https://guests.sergiotech.com`) forwards traffic to it. `/api/*` proxies to the `api` service; everything else proxies to the `web` container which serves the built SPA and handles the SPA fallback locally (`web/web-nginx.conf`).
+
+For laptop dev after these changes either `docker network create sergio-tech_proxy` once (sacrificial network — satisfies the `external: true` requirement), or temporarily add `ports: ["8080:80"]` back to the `nginx` service in `docker-compose.yml`.
+
+### Production deploy
+
+Live at `https://guests.sergiotech.com`, hosted on the same machine that serves `sergiotech.com` (Docker Compose stack at `/home/ubuntu/sergio-tech`). The full deploy plan is in `~/.claude/plans/cryptic-waddling-brooks.md`; the operational shape:
+
+- **CI**: `.github/workflows/deploy.yml` fires on push to `main`/`master`. It SSHes to the server, does `git reset --hard origin/<branch>`, `docker compose up -d --build`, and waits for the API healthcheck. Secrets needed: `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `KNOWN_HOSTS`.
+- **Never `docker compose down -v` in prod.** The schema in `db/01_schema.sql` only runs on an empty `pgdata` volume; wiping the volume nukes all RSVPs and seating data. The deploy workflow is `up -d --build` only — no `down`, no `-v`.
+- **Backups**: `scripts/backup.sh` runs `pg_dump` inside the `db` container and gzips into `~/backups/guest-list/`. Scheduled by `systemd/guest-list-backup.timer` (daily ~03:07 UTC, 14-day retention). Install the units with:
+  ```bash
+  sudo cp systemd/guest-list-backup.{service,timer} /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now guest-list-backup.timer
+  ```
+  Inspect with `systemctl list-timers guest-list-backup` and `journalctl -u guest-list-backup`.
+- **Restore**: `gunzip -c ~/backups/guest-list/guests-*.sql.gz | docker compose exec -T db psql -U dbuser -d guests`.
+- **Env**: prod `.env` lives on the server and is gitignored. CI never writes to it. Required prod values: `CORS_ORIGINS=https://guests.sergiotech.com`, `GOOGLE_OAUTH_REDIRECT_URI=https://guests.sergiotech.com/api/google-sync/oauth/callback`, real `GOOGLE_OAUTH_CLIENT_ID/SECRET`.
+- **Sergio-tech-side config**: the new vhost lives at `/home/ubuntu/sergio-tech/nginx/conf.d/guests.conf`. After editing, reload with `docker exec nginx-proxy nginx -t && docker exec nginx-proxy nginx -s reload` — no full restart.
+
+### Google Sheets sync
+
+`api/src/modules/google-sync/` lets OWNER/EDITOR users connect a Google account (OAuth authorization code flow, scope `spreadsheets.readonly`) and click "Sync from Google Sheet" on the Dashboard to upsert invitations from a configured sheet.
+
+- Per-user refresh tokens live in the `user_google_credential` table, encrypted with AES-256-GCM. The encryption key comes from `GOOGLE_TOKEN_ENC_KEY` (32 bytes, hex). All `GOOGLE_*` env vars are wired in `docker-compose.yml` (`GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI`, `GOOGLE_TOKEN_ENC_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TAB`).
+- Sheet columns must match `db/generate_seed.py` (A=guest, B=planned, C=status [Serbian], D=adults, E=children, G=forecast, H=date, I=napomena). `sheet-parser.util.ts` is a TS port of that script — keep them aligned.
+- Reconciliation is "sheet wins" — upsert by `guest_label`. Manual UI edits to a row are overwritten on the next sync.
+- The OAuth callback (`GET /api/google-sync/oauth/callback`) is unauthenticated and recovers identity from a signed `state` HMAC. Don't apply `JwtAuthGuard` to it.
 
 ## Conventions to preserve
 
