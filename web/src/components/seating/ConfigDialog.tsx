@@ -40,6 +40,9 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
 
   useEffect(() => {
     if (!open || !mode) return;
+    // Always reset the inner confirm state on (re)open so a dialog closed via
+    // backdrop while the confirm was showing doesn't replay it next time.
+    setConfirmDelete(false);
     if (mode.kind === 'create') {
       setName('');
       setTableCount(12);
@@ -69,11 +72,18 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
   const updateTable = useMutation({
     mutationFn: async () => {
       if (!mode || mode.kind !== 'editTable') return;
-      await api.patch(`/seating/tables/${mode.table.id}`, {
-        label: label.trim() || undefined,
-        seatCount,
-        tableNumber,
-      });
+      // Only send fields that actually changed. Sending tableNumber on every
+      // PATCH risks an unnecessary unique-violation against another table
+      // that happens to use the same number on a different plan, and also
+      // forces a needless rename path through the API even for label edits.
+      const body: { label?: string; seatCount?: number; tableNumber?: number } = {};
+      const trimmedLabel = label.trim();
+      if (trimmedLabel !== (mode.table.label ?? '')) {
+        body.label = trimmedLabel || undefined;
+      }
+      if (seatCount !== mode.table.seatCount) body.seatCount = seatCount;
+      if (tableNumber !== mode.table.tableNumber) body.tableNumber = tableNumber;
+      await api.patch(`/seating/tables/${mode.table.id}`, body);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['seating'] });

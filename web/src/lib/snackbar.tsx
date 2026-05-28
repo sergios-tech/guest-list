@@ -1,15 +1,25 @@
 import { createContext, ReactNode, useCallback, useContext, useState } from 'react';
-import { Alert, Snackbar } from '@mui/material';
+import { Alert, Button, Snackbar } from '@mui/material';
 
 type Severity = 'error' | 'success' | 'info' | 'warning';
+
+interface SnackbarAction {
+  label: string;
+  onClick: () => void;
+}
 
 interface SnackbarMessage {
   message: string;
   severity: Severity;
+  action?: SnackbarAction;
+}
+
+interface SnackbarOptions {
+  action?: SnackbarAction;
 }
 
 interface SnackbarCtx {
-  show: (message: string, severity?: Severity) => void;
+  show: (message: string, severity?: Severity, options?: SnackbarOptions) => void;
 }
 
 const Ctx = createContext<SnackbarCtx | null>(null);
@@ -22,9 +32,12 @@ export function useSnackbar(): SnackbarCtx {
 
 export function SnackbarProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<SnackbarMessage | null>(null);
-  const show = useCallback((message: string, severity: Severity = 'info') => {
-    setCurrent({ message, severity });
-  }, []);
+  const show = useCallback(
+    (message: string, severity: Severity = 'info', options?: SnackbarOptions) => {
+      setCurrent({ message, severity, action: options?.action });
+    },
+    [],
+  );
   return (
     <Ctx.Provider value={{ show }}>
       {children}
@@ -40,6 +53,18 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
             variant="filled"
             onClose={() => setCurrent(null)}
             sx={{ width: '100%' }}
+            action={current.action ? (
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => {
+                  current.action?.onClick();
+                  setCurrent(null);
+                }}
+              >
+                {current.action.label}
+              </Button>
+            ) : undefined}
           >
             {current.message}
           </Alert>

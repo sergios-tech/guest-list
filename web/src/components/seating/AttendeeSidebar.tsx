@@ -12,6 +12,17 @@ import {
   type UnseatedUnit, unseatedUnitDragId, unseatedUnitKey,
 } from '../../lib/seating';
 
+// Lowercase + strip diacritics so a search for "peric" matches "Perić".
+// NFD decomposition handles ć/š/ž/č (base letter + combining mark), but đ
+// is a single codepoint that doesn't decompose — it needs explicit mapping.
+function foldDiacritics(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[đĐ]/g, (c) => (c === 'đ' ? 'd' : 'D'))
+    .toLocaleLowerCase();
+}
+
 interface DraggableUnitChipProps {
   unit: UnseatedUnit;
   onHoist?: (invitationId: string) => void;
@@ -65,12 +76,12 @@ export default function AttendeeSidebar({ unseated, pinned, onHoist }: AttendeeS
 
   // Filter first: a unit passes if either the household label OR the
   // attendee name (when present) contains the query. Case- and
-  // diacritic-insensitive via toLocaleLowerCase so 'ivan' matches 'Ivan'.
-  const q = query.trim().toLocaleLowerCase();
+  // diacritic-insensitive so 'peric' matches 'Perić'.
+  const q = foldDiacritics(query.trim());
   const matches = (u: UnseatedUnit) => {
     if (!q) return true;
-    if (u.invitationLabel.toLocaleLowerCase().includes(q)) return true;
-    if (u.kind === 'attendee' && u.attendeeName.toLocaleLowerCase().includes(q)) return true;
+    if (foldDiacritics(u.invitationLabel).includes(q)) return true;
+    if (u.kind === 'attendee' && foldDiacritics(u.attendeeName).includes(q)) return true;
     return false;
   };
   const filtered = unseated.filter(matches);

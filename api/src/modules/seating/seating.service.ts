@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
-  DataSource, IsNull, Not,
+  DataSource, EntityManager, IsNull, Not,
   OptimisticLockVersionMismatchError, QueryFailedError, Repository,
 } from 'typeorm';
 import { SeatingPlan } from '../../entities/seating-plan.entity';
@@ -324,10 +324,17 @@ export class SeatingService {
   // ---------------- tables ----------------
 
   async addTable(planId: string, dto: CreateTableDto) {
-    const plan = await this.plans.findOne({ where: { id: planId } });
-    if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
-
     return this.ds.transaction(async (em) => {
+      // Lock the plan row first so two concurrent addTable calls cannot
+      // both compute the same MAX(table_number) and race on the
+      // seating_table_plan_id_table_number_key unique constraint.
+      const plan = await em.getRepository(SeatingPlan)
+        .createQueryBuilder('p')
+        .setLock('pessimistic_write')
+        .where('p.id = :id', { id: planId })
+        .getOne();
+      if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
+
       const tableRepo = em.getRepository(SeatingTable);
       // Pick the next available table number when the client doesn't supply one.
       // MAX + 1 keeps gaps if the user deleted a middle table — gap-filling
@@ -360,51 +367,70 @@ export class SeatingService {
   }
 
   async removeTable(id: string) {
-    const table = await this.tables.findOne({ where: { id } });
-    if (!table) throw new NotFoundException(`Seating table ${id} not found`);
+    await this.ds.transaction(async (em) => {
+      const tableRepo = em.getRepository(SeatingTable);
+      const seatRepo = em.getRepository(Seat);
 
-    // Refuse to drop a table that's holding seated guests — matches the
-    // shrink-occupied policy so the user can never silently lose arrangements.
-    const occupied = await this.seats
-      .createQueryBuilder('s')
-      .where('s.table_id = :t', { t: table.id })
-      .andWhere('(s.attendee_id IS NOT NULL OR s.invitation_id IS NOT NULL)')
-      .getCount();
-    if (occupied > 0) {
-      throw new UnprocessableEntityException({
-        code: 'SEATING_TABLE_DELETE_OCCUPIED',
-        message: 'Cannot delete a table with seated guests. Clear them first.',
-      });
-    }
+      const table = await tableRepo.findOne({ where: { id } });
+      if (!table) throw new NotFoundException(`Seating table ${id} not found`);
 
-    await this.tables.remove(table);
+      // Lock every seat row for this table FOR UPDATE so a concurrent
+      // assignSeat cannot slip in between the occupancy check and the
+      // CASCADE-delete, silently losing the new assignment.
+      await seatRepo
+        .createQueryBuilder('s')
+        .setLock('pessimistic_write')
+        .where('s.table_id = :t', { t: table.id })
+        .getMany();
+
+      // Refuse to drop a table that's holding seated guests — matches the
+      // shrink-occupied policy so the user can never silently lose arrangements.
+      const occupied = await seatRepo
+        .createQueryBuilder('s')
+        .where('s.table_id = :t', { t: table.id })
+        .andWhere('(s.attendee_id IS NOT NULL OR s.invitation_id IS NOT NULL)')
+        .getCount();
+      if (occupied > 0) {
+        throw new UnprocessableEntityException({
+          code: 'SEATING_TABLE_DELETE_OCCUPIED',
+          message: 'Cannot delete a table with seated guests. Clear them first.',
+        });
+      }
+
+      await tableRepo.remove(table);
+    }).catch(rethrowDbError);
     return { id, deleted: true };
   }
 
   async updateTable(id: string, dto: UpdateTableDto) {
-    const table = await this.tables.findOne({ where: { id } });
-    if (!table) throw new NotFoundException(`Seating table ${id} not found`);
+    // The whole edit — resize + rename + label — runs in one transaction so a
+    // unique-violation on tableNumber cannot leave a partial resize behind.
+    await this.ds.transaction(async (em) => {
+      const tableRepo = em.getRepository(SeatingTable);
+      const table = await tableRepo.findOne({ where: { id } });
+      if (!table) throw new NotFoundException(`Seating table ${id} not found`);
 
-    if (dto.label !== undefined) table.label = dto.label || null;
-    if (dto.tableNumber !== undefined) table.tableNumber = dto.tableNumber;
+      if (dto.label !== undefined) table.label = dto.label || null;
+      if (dto.tableNumber !== undefined) table.tableNumber = dto.tableNumber;
 
-    if (dto.seatCount !== undefined && dto.seatCount !== table.seatCount) {
-      await this.resizeTable(table, dto.seatCount);
-    }
+      if (dto.seatCount !== undefined && dto.seatCount !== table.seatCount) {
+        await this.resizeTable(em, table, dto.seatCount);
+      }
 
-    try {
-      await this.tables.save(table);
-    } catch (err) {
-      rethrowDbError(err);
-    }
+      await tableRepo.save(table);
+    }).catch(rethrowDbError);
     return this.findTable(id);
   }
 
-  private async resizeTable(table: SeatingTable, newCount: number) {
+  // Mutates `table.seatCount` in-memory; the caller is responsible for
+  // persisting it via tableRepo.save(table) inside the same transaction.
+  private async resizeTable(em: EntityManager, table: SeatingTable, newCount: number) {
+    const seatRepo = em.getRepository(Seat);
+
     if (newCount < table.seatCount) {
       // Reject the shrink if any seat above the new size is occupied — safer
       // than silently dropping arrangements.
-      const occupied = await this.seats
+      const occupied = await seatRepo
         .createQueryBuilder('s')
         .where('s.table_id = :t', { t: table.id })
         .andWhere('s.seat_number > :n', { n: newCount })
@@ -416,17 +442,11 @@ export class SeatingService {
           message: 'Cannot shrink — seats above the new size are occupied. Clear them first.',
         });
       }
-      await this.ds.transaction(async (em) => {
-        await em.getRepository(Seat).createQueryBuilder()
-          .delete().from(Seat)
-          .where('table_id = :t', { t: table.id })
-          .andWhere('seat_number > :n', { n: newCount })
-          .execute();
-        await em.getRepository(SeatingTable).update(
-          { id: table.id },
-          { seatCount: newCount },
-        );
-      });
+      await seatRepo.createQueryBuilder()
+        .delete().from(Seat)
+        .where('table_id = :t', { t: table.id })
+        .andWhere('seat_number > :n', { n: newCount })
+        .execute();
       table.seatCount = newCount;
     } else {
       // Grow: append seat rows for the new seat numbers.
@@ -438,7 +458,7 @@ export class SeatingService {
           seatNumber: s,
         });
       }
-      await this.seats.save(toCreate);
+      await seatRepo.save(toCreate);
       table.seatCount = newCount;
     }
   }
@@ -522,15 +542,33 @@ export class SeatingService {
   }
 
   async unseatAll(planId: string) {
-    const plan = await this.plans.findOne({ where: { id: planId } });
-    if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
-    const result = await this.seats.createQueryBuilder()
-      .update()
-      .set({ attendeeId: null, invitationId: null, slotIndex: null })
-      .where('plan_id = :p', { p: planId })
-      .andWhere('(attendee_id IS NOT NULL OR invitation_id IS NOT NULL)')
-      .execute();
-    return { clearedCount: result.affected ?? 0 };
+    return this.ds.transaction(async (em) => {
+      // Lock the plan row so concurrent reads with optimistic checks see a
+      // consistent before/after — and so the version bump below is serialized.
+      const plan = await em.getRepository(SeatingPlan)
+        .createQueryBuilder('p')
+        .setLock('pessimistic_write')
+        .where('p.id = :id', { id: planId })
+        .getOne();
+      if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
+
+      const result = await em.getRepository(Seat).createQueryBuilder()
+        .update()
+        .set({ attendeeId: null, invitationId: null, slotIndex: null })
+        .where('plan_id = :p', { p: planId })
+        .andWhere('(attendee_id IS NOT NULL OR invitation_id IS NOT NULL)')
+        .execute();
+
+      // Bulk UPDATE bypasses TypeORM's change tracking, so @VersionColumn is
+      // not auto-incremented. Bump it explicitly so any optimistic check on
+      // the plan version sees the bulk clear.
+      await em.query(
+        'UPDATE seating_plan SET version = version + 1, updated_at = NOW() WHERE id = $1',
+        [planId],
+      );
+
+      return { clearedCount: result.affected ?? 0 };
+    }).catch(rethrowDbError);
   }
 
   // ---------------- auto-fill ----------------

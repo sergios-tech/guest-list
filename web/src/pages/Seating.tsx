@@ -16,7 +16,7 @@ import { qk } from '../lib/queryKeys';
 import { useSnackbar } from '../lib/snackbar';
 import { apiErrorMessage } from '../lib/errors';
 import type {
-  PlanDetail, PlanSummary, TableView, UnseatedUnit,
+  PlanDetail, PlanSummary, SeatView, TableView, UnseatedUnit,
 } from '../lib/seating';
 import PlanSelector from '../components/seating/PlanSelector';
 import ConfigDialog from '../components/seating/ConfigDialog';
@@ -66,8 +66,14 @@ export default function Seating() {
   const [pinned, setPinned] = useState<string[]>([]);
   const [confirmUnseatAll, setConfirmUnseatAll] = useState(false);
 
+  // Cap so a long session of clicking guest names doesn't grow the list
+  // unboundedly — the recent-pins pattern only stays useful when bounded.
+  const MAX_PINNED = 10;
+
   function hoistHousehold(invitationId: string) {
-    setPinned((prev) => [invitationId, ...prev.filter((x) => x !== invitationId)]);
+    setPinned((prev) =>
+      [invitationId, ...prev.filter((x) => x !== invitationId)].slice(0, MAX_PINNED),
+    );
   }
 
   // Slight activation distance prevents accidental drags when the user just
@@ -144,6 +150,14 @@ export default function Seating() {
     onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
   });
 
+  // A single per-seat mutation is in flight only briefly, but bulk unseatAll
+  // racing with an in-flight assign can silently re-occupy a seat. Compute a
+  // single "is any seat-level mutation in flight" flag so we can block the
+  // dangerous combinations: unseatAll is disabled when seats are moving, and
+  // new assignments/clears are dropped while unseatAll is running.
+  const isSeatMutating = assign.isPending || swap.isPending || clearSeat.isPending;
+  const isUnseatingAll = unseatAll.isPending;
+
   const addTable = useMutation({
     mutationFn: async () => {
       if (!plan) return;
@@ -208,6 +222,9 @@ export default function Seating() {
   function onDragEnd(e: DragEndEvent) {
     setActiveDrag(null);
     if (!e.over) return;
+    // unseatAll is in flight: ignore the drop so we don't race a bulk clear
+    // with a single assignment that would silently survive.
+    if (isUnseatingAll) return;
     const activeIdRaw = String(e.active.id);
     const overIdRaw = String(e.over.id);
     if (activeIdRaw === overIdRaw) return;
@@ -243,6 +260,49 @@ export default function Seating() {
         });
       }
     }
+  }
+
+  // Click-to-unseat with an Undo snackbar. The snapshot is captured at click
+  // time because by the time the user clicks Undo, the seat's row has been
+  // refetched and the attendee/slot fields are null.
+  function handleClickUnseat(seatId: string) {
+    if (!plan || isUnseatingAll) return;
+    let prev: SeatView | undefined;
+    for (const tbl of plan.tables) {
+      prev = tbl.seats.find((s) => s.id === seatId);
+      if (prev) break;
+    }
+    if (!prev || !(prev.attendeeId || prev.invitationId)) return;
+    const snapshot = {
+      attendeeId: prev.attendeeId,
+      invitationId: prev.invitationId,
+      slotIndex: prev.slotIndex,
+    };
+    clearSeat.mutate(seatId, {
+      onSuccess: () => {
+        snackbar.show(t('seating.seatCleared'), 'success', {
+          action: {
+            label: t('seating.undo'),
+            onClick: () => {
+              if (snapshot.attendeeId) {
+                assign.mutate({
+                  seatId,
+                  body: { attendeeId: snapshot.attendeeId },
+                });
+              } else if (snapshot.invitationId && snapshot.slotIndex != null) {
+                assign.mutate({
+                  seatId,
+                  body: {
+                    invitationId: snapshot.invitationId,
+                    slotIndex: snapshot.slotIndex,
+                  },
+                });
+              }
+            },
+          },
+        });
+      },
+    });
   }
 
   // ------------- derived view state -------------
@@ -284,7 +344,11 @@ export default function Seating() {
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <Grid container spacing={2} sx={{ flex: 1, minHeight: 0 }}>
             <Grid item xs={12} md={3} lg={2.5}>
+              {/* key={selectedId} so switching plans remounts the sidebar and
+                  drops its local search query — pins are wiped above for the
+                  same reason. */}
               <AttendeeSidebar
+                key={selectedId}
                 unseated={unseated}
                 pinned={pinned}
                 onHoist={hoistHousehold}
@@ -316,7 +380,7 @@ export default function Seating() {
                     color="warning"
                     startIcon={<EventSeatIcon />}
                     onClick={() => setConfirmUnseatAll(true)}
-                    disabled={!hasSeated || unseatAll.isPending}
+                    disabled={!hasSeated || isUnseatingAll || isSeatMutating}
                   >
                     {t('seating.unseatAll')}
                   </Button>
@@ -337,7 +401,7 @@ export default function Seating() {
                       totalTables={plan.tables.length}
                       onEdit={(t) => setDialog({ kind: 'editTable', table: t, planId: plan.id })}
                       onHoist={hoistHousehold}
-                      onUnseat={(seatId) => clearSeat.mutate(seatId)}
+                      onUnseat={handleClickUnseat}
                     />
                   ))}
                 </Box>
