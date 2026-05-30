@@ -22,6 +22,11 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
         run: |
+          # Fail fast with a clear message if secrets are unset, rather than
+          # writing empty key/known_hosts files that surface later as opaque
+          # ssh errors (e.g. "Permission denied" / "Host key verification failed").
+          : "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY secret is not set}"
+          : "${KNOWN_HOSTS:?KNOWN_HOSTS secret is not set}"
           mkdir -p ~/.ssh
           # Write the deploy private key. Trailing newline is mandatory or
           # ssh-agent rejects it as malformed.
@@ -35,6 +40,10 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
+          # Without these, an unset secret makes the command `ssh "@"`, which
+          # fails with an opaque usage error (exit 255). Fail fast and say why.
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is not set}"
+          : "${DEPLOY_USER:?DEPLOY_USER secret is not set}"
           ssh "$DEPLOY_USER@$DEPLOY_HOST" bash <<'EOF'
             set -euo pipefail
             cd /home/ubuntu/projects/guest-list
