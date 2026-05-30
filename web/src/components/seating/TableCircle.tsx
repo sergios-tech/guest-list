@@ -127,15 +127,15 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
           borderColor: isOver
             ? theme.palette.primary.main
             : occupied
-              ? theme.palette.primary.main
+              ? 'rgb(0, 255, 0)'
               : theme.palette.divider,
           backgroundColor: isOver
             ? theme.palette.primary.light
             : occupied
-              ? theme.palette.primary.main
+              ? 'rgb(128, 255, 128)'
               : 'transparent',
           color: occupied
-            ? theme.palette.primary.contrastText
+            ? 'rgba(0, 0, 0, 0.87)'
             : theme.palette.text.disabled,
           display: 'flex',
           alignItems: 'center',
@@ -188,9 +188,8 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
             variant="caption"
             sx={{
               ...truncatedLabelSx,
-              mt: 0.25,
               fontSize: 6,
-              lineHeight: 1.2,
+              lineHeight: 1,
               color: 'text.secondary',
             }}
           >
