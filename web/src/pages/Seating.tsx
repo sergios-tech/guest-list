@@ -68,6 +68,18 @@ export default function Seating() {
   const [pinned, setPinned] = useState<string[]>([]);
   const [confirmUnseatAll, setConfirmUnseatAll] = useState(false);
 
+  // Drop the plan selection the instant the tenant changes. selectedId is local
+  // state holding a plan id owned by the *previous* client; left untouched, the
+  // plan-detail and unseated queries below would fire `GET /seating/plans/<old-id>`
+  // under the new X-Client-Id and 404 before the effect that re-picks a plan runs.
+  // Setting state during render (React's "adjust state on prop change" pattern)
+  // discards this render before those queries commit, so no stale request leaves.
+  const [clientForSelection, setClientForSelection] = useState(currentClientId);
+  if (currentClientId !== clientForSelection) {
+    setClientForSelection(currentClientId);
+    setSelectedId(null);
+  }
+
   // Cap so a long session of clicking guest names doesn't grow the list
   // unboundedly — the recent-pins pattern only stays useful when bounded.
   const MAX_PINNED = 10;

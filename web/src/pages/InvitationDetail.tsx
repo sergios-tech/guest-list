@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Paper, Stack, TextField, MenuItem, Button, Box, Typography,
@@ -57,6 +57,19 @@ export default function InvitationDetail() {
   const isNew = !id;
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
+  // The tenant this detail page belongs to. `id` comes from the URL and names
+  // an invitation owned by one specific client; if the user switches clients via
+  // the AppBar selector the URL stays put, so fetching `id` under the new
+  // X-Client-Id would 404. Capture the client on the first render where one
+  // exists (adopting it during render guards the auth-loading null→value step so
+  // it isn't mistaken for a switch), then bounce to the tenant-agnostic list on a
+  // real change. The invitation query below is also disabled on mismatch so it
+  // can't fire the stale request in the same commit before the redirect lands.
+  const [pageClientId, setPageClientId] = useState<string | null>(currentClientId);
+  if (pageClientId === null && currentClientId) setPageClientId(currentClientId);
+  const clientSwitched =
+    pageClientId !== null && currentClientId !== null && currentClientId !== pageClientId;
+
   const { control, handleSubmit, reset, watch } = useForm<InvitationForm>({
     defaultValues: {
       guestLabel: '', plannedCount: null, status: 'POZVAN',
@@ -69,7 +82,7 @@ export default function InvitationDetail() {
   const { data: invitation } = useQuery({
     queryKey: id ? qk.invitation(currentClientId!, id) : ['invitation', 'new'],
     queryFn: async () => (await api.get(`/invitations/${id}`)).data,
-    enabled: !isNew && !!currentClientId,
+    enabled: !isNew && !!currentClientId && !clientSwitched,
   });
 
   useEffect(() => {
@@ -141,6 +154,12 @@ export default function InvitationDetail() {
     },
     onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
   });
+
+  // Tenant changed under us: the URL's invitation belongs to the previous client.
+  // Leave for the list rather than render a page wired to a foreign id. Returning
+  // <Navigate> here (after every hook above) also unmounts <AttendeeList> before
+  // it can fire its own by-invitation query against the wrong tenant.
+  if (clientSwitched) return <Navigate to="/invitations" replace />;
 
   return (
     <Stack spacing={2}>
