@@ -146,12 +146,13 @@ Live at `https://guests.sergiotech.com`, hosted on the same machine that serves 
 
 - **CI**: `.github/workflows/deploy.yml` fires on push to `main`/`master`. It SSHes to the server, does `git reset --hard origin/<branch>`, `docker compose up -d --build`, and waits for the API healthcheck. Secrets needed: `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `KNOWN_HOSTS`.
 - **Never `docker compose down -v` in prod.** The schema in `db/01_schema.sql` only runs on an empty `pgdata` volume; wiping the volume nukes all RSVPs and seating data. The deploy workflow is `up -d --build` only — no `down`, no `-v`.
-- **Schema migrations are manual.** There is no migration framework and CI does **not** run migrations. `db/01_schema.sql` is for fresh volumes only; to change a live prod DB, write an idempotent script under `db/migrations/` and run it once by hand against the existing volume (back up first). The multi-tenancy upgrade is `db/migrations/03_multitenancy.sql` — verified idempotent (safe to re-run). Apply with:
+- **Schema migrations are manual.** There is no migration framework and CI does **not** run migrations. `db/01_schema.sql` is for fresh volumes only; to change a live prod DB, write an idempotent script under `db/migrations/` and run it once by hand against the existing volume. Migrations are verified idempotent (safe to re-run): `03_multitenancy.sql` (multi-tenancy), `04_sheet_row_order.sql` (sheet-row ordering; widens `sheet_row` to `integer`). **Apply via the guarded helper** — it does backup → verify (gzip + dump-complete marker) → apply (`ON_ERROR_STOP`) → verify, and prints the restore command:
   ```bash
-  ./scripts/backup.sh
-  docker compose exec -T db psql -U dbuser -d guests < db/migrations/03_multitenancy.sql
+  ./scripts/apply-migration.sh db/migrations/04_sheet_row_order.sql      # prompts before applying to the live DB
+  CONFIRM=1 ./scripts/apply-migration.sh db/migrations/NN_name.sql       # skip the prompt (automation)
+  TARGET_DB=guests_test CONFIRM=1 ./scripts/apply-migration.sh db/migrations/NN_name.sql   # dry-run on a disposable copy
   ```
-  Keep `db/01_schema.sql` and the matching migration in sync (fresh-install vs upgrade must converge to the same shape).
+  It targets the container's `POSTGRES_DB` by default and backs that DB up first (the dump lands in the normal `scripts/backup.sh` rotation). Equivalent manual steps if you ever need them: `./scripts/backup.sh` then `docker compose exec -T db psql -U dbuser -d guests < db/migrations/NN_name.sql`. Keep `db/01_schema.sql` and the matching migration in sync (fresh-install vs upgrade must converge to the same shape).
 - **Backups**: `scripts/backup.sh` runs `pg_dump` inside the `db` container and gzips into `~/backups/guest-list/`. Scheduled by `systemd/guest-list-backup.timer` (daily ~03:07 UTC, 14-day retention). Install the units with:
   ```bash
   sudo cp systemd/guest-list-backup.{service,timer} /etc/systemd/system/
