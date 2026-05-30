@@ -50,7 +50,23 @@ function row(guest: string, opts: RowOpts = {}): unknown[] {
 
 const sheet = (...rows: unknown[][]): unknown[][] => [HEADER, ...rows];
 
-describe('GoogleSyncService.applySheetValues (offline reconcile)', () => {
+// A header grid WITHOUT the dedicated companions column (mirrors the real source
+// spreadsheet, whose names live in Napomena) — used to prove a column-less sheet
+// leaves existing attendees untouched rather than wiping them.
+const NO_COMPANION_HEADER = HEADER.slice(0, 9); // A..I, no 'Zvanica u pratnji'
+const sheetNoCompanions = (...rows: unknown[][]): unknown[][] =>
+  [NO_COMPANION_HEADER, ...rows.map((r) => r.slice(0, 9))];
+
+// This suite needs a REAL Postgres and creates/drops throwaway clients, so it is
+// OFF by default: `npm test` skips it entirely (the pure unit specs still run).
+// Opt in explicitly against a DISPOSABLE database (never the live `guests` data):
+//   RUN_DB_TESTS=1 DB_HOST=localhost DB_PORT=5432 DB_USER=dbuser \
+//   DB_PASSWORD=... DB_NAME=guests_test npx vitest run google-sync.reconcile.int
+// The explicit RUN_DB_TESTS gate stops a stray dev DB_HOST from pointing the
+// suite at production.
+const RUN_DB_TESTS = process.env.RUN_DB_TESTS === '1';
+
+describe.skipIf(!RUN_DB_TESTS)('GoogleSyncService.applySheetValues (offline reconcile)', () => {
   let ds: DataSource;
   let service: GoogleSyncService;
   let invitations: Repository<Invitation>;
@@ -220,5 +236,71 @@ describe('GoogleSyncService.applySheetValues (offline reconcile)', () => {
     const res = await service.applySheetValues(clientId, userId, 'continue', sheet(row('Keep A')));
     expect(res.deleted).toBe(0);
     expect(await countInv()).toBe(2); // Drop B survives in continue mode
+  });
+
+  it('a column-less sheet leaves existing attendees untouched (does not wipe them)', async () => {
+    // Seed a guest WITH a companion (creates an attendee) via a sheet that has
+    // the dedicated column.
+    await service.applySheetValues(clientId, userId, 'clean', sheet(
+      row('Guest A', { companions: 'Ana' }),
+    ));
+    const a0 = await invitations.findOneByOrFail({ clientId, guestLabel: 'Guest A' });
+    expect(await attendees.findOneBy({ invitationId: a0.id, fullName: 'Ana' })).not.toBeNull();
+
+    // Continue (the default) from a column-less sheet: attendees must survive.
+    const cont = await service.applySheetValues(
+      clientId, userId, 'continue', sheetNoCompanions(row('Guest A')),
+    );
+    expect(cont.attendeesRemoved).toBe(0);
+    expect(await attendees.findOneBy({ invitationId: a0.id, fullName: 'Ana' })).not.toBeNull();
+
+    // A column-less CLEAN must also leave the roster alone (absent != empty).
+    const clean = await service.applySheetValues(
+      clientId, userId, 'clean', sheetNoCompanions(row('Guest A')),
+    );
+    expect(clean.attendeesRemoved).toBe(0);
+    expect(await attendees.findOneBy({ invitationId: a0.id, fullName: 'Ana' })).not.toBeNull();
+  });
+
+  it('clean keeps an existing guest whose row has an out-of-range count', async () => {
+    await service.applySheetValues(clientId, userId, 'clean', sheet(row('Guest A'), row('Guest B')));
+    const a0 = await invitations.findOneByOrFail({ clientId, guestLabel: 'Guest A' });
+
+    // Re-clean with Guest A's adults out of range (a typo). It is reported as a
+    // soft error but is STILL in the sheet, so it must NOT be deleted as an orphan.
+    const res = await service.applySheetValues(clientId, userId, 'clean', sheet(
+      row('Guest A', { adults: 20 }),
+      row('Guest B'),
+    ));
+    expect(res.errors.some((e) => e.guestLabel === 'Guest A')).toBe(true);
+    expect(res.deleted).toBe(0);
+    expect(await invitations.findOneBy({ id: a0.id })).not.toBeNull();
+    expect(await countInv()).toBe(2);
+  });
+
+  it('continue mode does not delete app-created attendees missing from the sheet', async () => {
+    await service.applySheetValues(clientId, userId, 'clean', sheet(row('Guest A')));
+    const a0 = await invitations.findOneByOrFail({ clientId, guestLabel: 'Guest A' });
+    // Simulate an attendee added through the app UI (not present in the sheet).
+    await attendees.save(attendees.create({
+      invitationId: a0.id, fullName: 'Manual Person', isChild: false,
+    }));
+
+    // A continue sync whose companions cell for Guest A is empty is additive — it
+    // must not remove the manually-added attendee.
+    const res = await service.applySheetValues(clientId, userId, 'continue', sheet(row('Guest A')));
+    expect(res.attendeesRemoved).toBe(0);
+    expect(
+      await attendees.findOneBy({ invitationId: a0.id, fullName: 'Manual Person' }),
+    ).not.toBeNull();
+
+    // Whereas a CLEAN sync (mirror) with an empty companions cell DOES remove it.
+    const cleanRes = await service.applySheetValues(
+      clientId, userId, 'clean', sheet(row('Guest A')),
+    );
+    expect(cleanRes.attendeesRemoved).toBe(1);
+    expect(
+      await attendees.findOneBy({ invitationId: a0.id, fullName: 'Manual Person' }),
+    ).toBeNull();
   });
 });
