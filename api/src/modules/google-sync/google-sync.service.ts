@@ -134,6 +134,26 @@ export class GoogleSyncService {
       throw err;
     }
 
+    return this.applySheetValues(clientId, userId, mode, values);
+  }
+
+  /**
+   * Apply an already-fetched sheet grid to the DB: parse -> reconcile -> apply.
+   *
+   * This is the seam between Google I/O and the reconciliation logic. `run()`
+   * fetches `values` from the Sheets API and delegates here; tests drive this
+   * method directly with synthetic rows to exercise the full clean/continue
+   * reconcile path OFFLINE (no OAuth, no network). `values` is the raw row-major
+   * grid exactly as the Sheets API returns it — row 0 is the header. Every DB
+   * effect (inserts, updates, the clean-mode orphan delete, the empty-sheet
+   * refusal) happens here, so this method alone is the unit of sync behaviour.
+   */
+  async applySheetValues(
+    clientId: string,
+    userId: string,
+    mode: 'continue' | 'clean',
+    values: unknown[][],
+  ): Promise<SyncResult> {
     const result: SyncResult = {
       inserted: 0, updated: 0, renamed: 0, skipped: 0,
       unknownStatuses: 0, demotedConfirmed: 0,
@@ -147,7 +167,7 @@ export class GoogleSyncService {
     const companionIdx = header.findIndex((h) => norm(h).toLowerCase() === wantedHeader);
     if (companionIdx < 0) {
       this.logger.warn(
-        `Sheet '${sheetTab}' has no '${ATTENDEES_COLUMN_HEADER}' column; attendees will not be synced.`,
+        `Sheet has no '${ATTENDEES_COLUMN_HEADER}' column; attendees will not be synced.`,
       );
     }
 
