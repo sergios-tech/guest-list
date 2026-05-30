@@ -21,6 +21,8 @@ coverage/
 *.png
 *.prettiercache
 *.tscache
+ACCOUNTS.md
+PENDING_TODOS.md
 
 # AI generated files
 *.claude
