@@ -9,10 +9,11 @@ i18n
   .use(initReactI18next)
   .init({
     resources: { en: { translation: en }, sr: { translation: sr } },
+    lng: 'sr',
     fallbackLng: 'sr',
     supportedLngs: ['en', 'sr'],
     interpolation: { escapeValue: false },
-    detection: { order: ['localStorage', 'navigator'], caches: ['localStorage'] },
+    detection: { order: ['localStorage'], caches: ['localStorage'] },
   });
 
 export default i18n;

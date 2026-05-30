@@ -10,8 +10,10 @@ import { AttendeesModule } from './modules/attendees/attendees.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { SeatingModule } from './modules/seating/seating.module';
 import { GoogleSyncModule } from './modules/google-sync/google-sync.module';
+import { ClientsModule } from './modules/clients/clients.module';
 import { HealthModule } from './modules/health/health.module';
 import { buildTypeOrmConfig } from './config/typeorm.config';
+import { THROTTLER } from './config/throttler.config';
 
 // When REDIS_URL is set, throttler counters survive api restarts and are
 // shared across replicas. Without it, counters live in-process — acceptable
@@ -26,8 +28,8 @@ const throttlerStorage = redisUrl
     TypeOrmModule.forRoot(buildTypeOrmConfig()),
     ThrottlerModule.forRoot({
       throttlers: [
-        { name: 'short', ttl: 1_000, limit: 5 },     // 5 req / sec / IP burst
-        { name: 'long', ttl: 60_000, limit: 30 },    // 30 req / min / IP sustained
+        { name: THROTTLER.SHORT, ttl: 1_000, limit: 5 },     // 5 req / sec / IP burst
+        { name: THROTTLER.LONG, ttl: 60_000, limit: 30 },    // 30 req / min / IP sustained
       ],
       storage: throttlerStorage,
     }),
@@ -37,6 +39,7 @@ const throttlerStorage = redisUrl
     StatsModule,
     SeatingModule,
     GoogleSyncModule,
+    ClientsModule,
     HealthModule,
   ],
   providers: [

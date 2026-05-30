@@ -24,6 +24,11 @@ export class Invitation {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  // Tenant owner. Every query must scope by this; set on create from the
+  // request's current client (X-Client-Id).
+  @Column({ name: 'client_id', type: 'uuid' })
+  clientId!: string;
+
   @Column({ name: 'guest_label' })
   guestLabel!: string;
 

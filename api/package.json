@@ -6,7 +6,8 @@
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "start:prod": "node dist/main.js"
+    "start:prod": "node dist/main.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
@@ -21,6 +22,7 @@
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "google-auth-library": "^10.6.2",
     "googleapis": "^172.0.0",
     "ioredis": "^5.10.1",
     "passport": "^0.7.0",
@@ -36,6 +38,7 @@
     "@types/express": "^5.0.0",
     "@types/node": "^22.7.0",
     "@types/passport-jwt": "^4.0.1",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
   }
 }

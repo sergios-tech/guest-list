@@ -11,6 +11,13 @@
       rel="stylesheet"
     />
     <title>Guest List</title>
+    <!-- Google Identity Services — powers the "Continue with Google" button on
+         the login page (web/src/components/GoogleLoginButton.tsx).
+         No Subresource Integrity (integrity=) on purpose: GIS is a versionless,
+         frequently-updated script and Google does not publish a stable hash for
+         it. Pinning one would break login the next time Google ships an update.
+         This is the exact tag from Google's official docs. -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <div id="root"></div>

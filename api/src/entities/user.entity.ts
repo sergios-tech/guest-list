@@ -19,8 +19,15 @@ export class User {
   @Column({ name: 'display_name' })
   displayName!: string;
 
+  // Legacy global role. Superseded by per-client UserClient.role; no longer
+  // read by the auth layer. Retained for backward compat / audit.
   @Column({ type: 'enum', enum: ['OWNER', 'EDITOR', 'VIEWER'], default: 'EDITOR' })
   role!: UserRole;
+
+  // Platform super-admin (manages clients + memberships). Orthogonal to the
+  // per-client OWNER/EDITOR/VIEWER roles.
+  @Column({ name: 'is_super_admin', type: 'boolean', default: false })
+  isSuperAdmin!: boolean;
 
   @Column({ default: 'sr' })
   locale!: string;

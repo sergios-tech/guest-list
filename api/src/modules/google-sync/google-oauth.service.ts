@@ -7,6 +7,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { UserGoogleCredential } from '../../entities/user-google-credential.entity';
+import { getGoogleClientId } from '../../config/google.config';
 import { decrypt, encrypt } from './crypto.util';
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly'];
@@ -20,7 +21,12 @@ function env(name: string, fallback?: string): string {
   throw new Error(`Missing required env var ${name}`);
 }
 
-function clientId():     string { return env('GOOGLE_OAUTH_CLIENT_ID', 'dev-google-client-id'); }
+// Only the client id is centralised in config/google.config.ts — it is the one
+// Google value shared with the auth/login flow (auth.service.ts), so it lives in
+// one place to avoid drift. The secret, redirect URI, and state secret below are
+// used ONLY by this Sheets-sync flow, so they stay local rather than bloating
+// the shared config with sync-specific concerns.
+function clientId():     string { return getGoogleClientId(); }
 function clientSecret(): string { return env('GOOGLE_OAUTH_CLIENT_SECRET', 'dev-google-client-secret'); }
 function redirectUri():  string {
   return env('GOOGLE_OAUTH_REDIRECT_URI', 'http://localhost:8080/api/google-sync/oauth/callback');

@@ -4,13 +4,15 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { getJwtExpiresIn, getJwtSecret } from '../../config/jwt.config';
 import { User } from '../../entities/user.entity';
+import { UserClient } from '../../entities/user-client.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { ClientContextGuard } from './client-context.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, UserClient]),
     PassportModule,
     JwtModule.register({
       secret: getJwtSecret(),
@@ -18,7 +20,7 @@ import { JwtStrategy } from './jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  providers: [AuthService, JwtStrategy, ClientContextGuard],
+  exports: [AuthService, ClientContextGuard],
 })
 export class AuthModule {}

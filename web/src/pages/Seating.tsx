@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { qk } from '../lib/queryKeys';
+import { useAuth } from '../lib/auth';
 import { useSnackbar } from '../lib/snackbar';
 import { apiErrorMessage } from '../lib/errors';
 import type {
@@ -57,6 +58,7 @@ export default function Seating() {
   const { t } = useTranslation();
   const snackbar = useSnackbar();
   const qc = useQueryClient();
+  const { currentClientId } = useAuth();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<ConfigDialogMode>(null);
@@ -83,20 +85,21 @@ export default function Seating() {
   );
 
   const { data: plans = [], isLoading: plansLoading } = useQuery<PlanSummary[]>({
-    queryKey: qk.seatingPlans(),
+    queryKey: qk.seatingPlans(currentClientId!),
     queryFn: async () => (await api.get('/seating/plans')).data,
+    enabled: !!currentClientId,
   });
 
   const { data: plan, isLoading: planLoading } = useQuery<PlanDetail>({
-    queryKey: selectedId ? qk.seatingPlan(selectedId) : ['seating', 'plan', 'none'],
+    queryKey: selectedId ? qk.seatingPlan(currentClientId!, selectedId) : ['seating', 'plan', 'none'],
     queryFn: async () => (await api.get(`/seating/plans/${selectedId}`)).data,
-    enabled: !!selectedId,
+    enabled: !!selectedId && !!currentClientId,
   });
 
   const { data: unseated = [] } = useQuery<UnseatedUnit[]>({
-    queryKey: selectedId ? qk.seatingUnseated(selectedId) : ['seating', 'unseated', 'none'],
+    queryKey: selectedId ? qk.seatingUnseated(currentClientId!, selectedId) : ['seating', 'unseated', 'none'],
     queryFn: async () => (await api.get(`/seating/plans/${selectedId}/unseated`)).data,
-    enabled: !!selectedId,
+    enabled: !!selectedId && !!currentClientId,
   });
 
   // When the plan list arrives (or changes), keep the selection sensible:

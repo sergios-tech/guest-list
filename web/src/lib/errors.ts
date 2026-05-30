@@ -23,3 +23,10 @@ export function apiErrorMessage(err: unknown, t: TFunction): string {
   if (Array.isArray(body?.message)) return body.message.join('; ');
   return t('errors.GENERIC');
 }
+
+// Pull the HTTP status off an axios error, if any. Centralised so call sites
+// (Login, InvitationDetail, …) don't each hand-roll the
+// `(err as { response?: { status?: number } })` cast.
+export function apiErrorStatus(err: unknown): number | undefined {
+  return (err as AxiosError<ApiErrorBody> | undefined)?.response?.status;
+}

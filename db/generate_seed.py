@@ -142,13 +142,25 @@ def main():
 
     # default owner user (password: 'changeme' bcrypt hash, see README)
     owner_id = "'11111111-1111-1111-1111-111111111111'"
+    # default client (tenant) that owns all seeded data; fixed UUID matches
+    # db/migrations/03_multitenancy.sql so fresh-install and migrated DBs align.
+    client_id = "'00000000-0000-0000-0000-0000000000c1'"
     statements.append(f"""
-INSERT INTO app_user (id, email, password_hash, display_name, role, locale) VALUES
+INSERT INTO client (id, name, slug, google_sheet_id, google_sheet_tab) VALUES
+({client_id}, 'Default', 'default',
+ '1gsydyLPpQH3bJoppdZoLYjlq3zKexlc-qWnuYnujeQM', 'Pozivnice')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO app_user (id, email, password_hash, display_name, role, is_super_admin, locale) VALUES
 ({owner_id},
  'owner@example.com',
  '$2b$10$wJXdVk4zM4lAGo0CaiXj8uYPOddBQcWVRnwmPMOljkIpAR9rMnK8e',  -- bcrypt('changeme')
- 'Owner', 'OWNER', 'sr')
+ 'Owner', 'OWNER', true, 'sr')
 ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO user_client (user_id, client_id, role) VALUES
+({owner_id}, {client_id}, 'OWNER')
+ON CONFLICT (user_id, client_id) DO NOTHING;
 """)
 
     inv_rows = []
@@ -212,7 +224,7 @@ ON CONFLICT (email) DO NOTHING;
             deca_sql = sql_int(deca)
 
         inv_rows.append(
-            f"({inv_id}, {sql_str(gost)}, {sql_int(planirano)}, '{status}', "
+            f"({inv_id}, {client_id}, {sql_str(gost)}, {sql_int(planirano)}, '{status}', "
             f"{odrasli_sql}, {deca_sql}, {sql_int(prognoza)}, "
             f"{sql_date(datum)}, '{accom}', {sql_str(decline_reason)}, "
             f"{sql_str(final_notes)}, {owner_id}, {owner_id})"
@@ -228,7 +240,7 @@ ON CONFLICT (email) DO NOTHING;
             )
 
     statements.append("INSERT INTO invitation "
-        "(id, guest_label, planned_count, status, adults, children, "
+        "(id, client_id, guest_label, planned_count, status, adults, children, "
         "forecast, response_date, accommodation, decline_reason, notes, "
         "created_by, updated_by) VALUES")
     statements.append(",\n".join(inv_rows) + ";")

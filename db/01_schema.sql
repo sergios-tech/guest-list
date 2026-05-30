@@ -33,7 +33,13 @@ CREATE TABLE app_user (
   email           citext NOT NULL UNIQUE,        -- requires citext ext below
   password_hash   text   NOT NULL,
   display_name    text   NOT NULL,
+  -- Legacy global role. Superseded by user_client.role (per-client). Kept for
+  -- backward compatibility / audit; NOT read by the auth layer anymore. The
+  -- per-client role is the source of truth (see user_client below).
   role            user_role NOT NULL DEFAULT 'EDITOR',
+  -- Platform super-admin: orthogonal to per-client roles. Super-admins manage
+  -- clients and memberships (see modules/clients). Most users are false.
+  is_super_admin  boolean NOT NULL DEFAULT false,
   locale          text   NOT NULL DEFAULT 'sr',  -- 'sr' | 'en'
   -- Soft-delete: hard DELETE would null the invitation audit columns
   -- (created_by/updated_by ON DELETE SET NULL). Setting deleted_at preserves
@@ -44,6 +50,35 @@ CREATE TABLE app_user (
 );
 
 CREATE INDEX ix_app_user_active ON app_user (id) WHERE deleted_at IS NULL;
+
+------------------------------------------------------------------
+-- clients (tenants) and memberships
+------------------------------------------------------------------
+-- One client = one tenant (a wedding/event) that owns its invitations,
+-- seating plans, and Google Sheet sync config. All tenant-scoped tables key
+-- off client.id. The currently-global GOOGLE_SHEET_ID / GOOGLE_SHEET_TAB env
+-- vars move here so each client syncs its own sheet.
+CREATE TABLE client (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             text   NOT NULL,
+  slug             citext UNIQUE,                 -- optional human handle
+  google_sheet_id  text,
+  google_sheet_tab text,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+
+-- Membership join: a user belongs to many clients, each with its own role.
+-- This replaces app_user.role as the authoritative role for tenant access.
+CREATE TABLE user_client (
+  user_id    uuid NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+  client_id  uuid NOT NULL REFERENCES client(id)   ON DELETE CASCADE,
+  role       user_role NOT NULL DEFAULT 'EDITOR',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, client_id)
+);
+
+CREATE INDEX ix_user_client_client ON user_client(client_id);
 
 ------------------------------------------------------------------
 -- google credentials (per-user OAuth refresh tokens for Sheets sync)
@@ -68,6 +103,7 @@ CREATE TABLE user_google_credential (
 ------------------------------------------------------------------
 CREATE TABLE invitation (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id        uuid NOT NULL REFERENCES client(id) ON DELETE CASCADE,
   guest_label      text NOT NULL,
   planned_count    smallint CHECK (planned_count BETWEEN 0 AND 12),
   status           rsvp_status NOT NULL DEFAULT 'NIJE_POZVAN',
@@ -94,6 +130,7 @@ CREATE TABLE invitation (
            OR (COALESCE(adults,0)=0 AND COALESCE(children,0)=0))
 );
 
+CREATE INDEX ix_invitation_client        ON invitation(client_id);
 CREATE INDEX ix_invitation_status        ON invitation(status);
 CREATE INDEX ix_invitation_accommodation ON invitation(accommodation)
   WHERE accommodation <> 'NONE';
@@ -141,11 +178,16 @@ CREATE TRIGGER trg_user_google_credential_touch
   BEFORE UPDATE ON user_google_credential
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
+CREATE TRIGGER trg_client_touch
+  BEFORE UPDATE ON client
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
 ------------------------------------------------------------------
 -- seating plans (table layout for the reception)
 ------------------------------------------------------------------
 CREATE TABLE seating_plan (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id       uuid NOT NULL REFERENCES client(id) ON DELETE CASCADE,
   name            text NOT NULL,
   is_active       boolean NOT NULL DEFAULT false,
   notes           text,
@@ -156,11 +198,14 @@ CREATE TABLE seating_plan (
   version         integer NOT NULL DEFAULT 0       -- TypeORM @VersionColumn
 );
 
--- At most one plan can be the "active" one at a time. Partial unique index:
--- the constraint applies only to rows with is_active = true, so unlimited
--- inactive plans coexist.
+CREATE INDEX ix_seating_plan_client ON seating_plan(client_id);
+
+-- At most one plan can be the "active" one at a time PER CLIENT. Partial unique
+-- index keyed on client_id: the constraint applies only to rows with
+-- is_active = true, so each client has one active plan and unlimited inactive
+-- ones, independent of other clients.
 CREATE UNIQUE INDEX ux_seating_plan_one_active
-  ON seating_plan (is_active) WHERE is_active = true;
+  ON seating_plan (client_id) WHERE is_active = true;
 
 CREATE TRIGGER trg_seating_plan_touch
   BEFORE UPDATE ON seating_plan
@@ -251,8 +296,12 @@ CREATE TRIGGER trg_invitation_clear_seats
 ------------------------------------------------------------------
 -- stats view (replaces the K/L summary block in the sheet)
 ------------------------------------------------------------------
+-- Per-client aggregates: one row per client_id. The stats service filters
+-- `WHERE client_id = $1`; a client with zero invitations yields NO row, so the
+-- service coalesces a missing row to all-zeros.
 CREATE VIEW v_invitation_stats AS
 SELECT
+  client_id,
   COUNT(*) FILTER (WHERE status = 'POZVAN')             AS pending,
   COUNT(*) FILTER (WHERE status = 'POTVRDJEN_DOLAZAK')  AS confirmed_invites,
   COUNT(*) FILTER (WHERE status = 'NIJE_POZVAN')        AS not_invited,
@@ -269,4 +318,5 @@ SELECT
   -- catering/seating. Exclude ODBIJENO; pending and confirmed both count.
   COALESCE(SUM(forecast)
            FILTER (WHERE status <> 'ODBIJENO'), 0)      AS forecast_headcount
-FROM invitation;
+FROM invitation
+GROUP BY client_id;

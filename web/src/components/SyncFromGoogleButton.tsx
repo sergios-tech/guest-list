@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { qk } from '../lib/queryKeys';
+import { useAuth } from '../lib/auth';
 import { useSnackbar } from '../lib/snackbar';
 import { apiErrorMessage } from '../lib/errors';
 
@@ -27,6 +28,7 @@ interface SyncRowError {
 interface SyncResult {
   inserted: number;
   updated: number;
+  renamed: number;
   skipped: number;
   unknownStatuses: number;
   demotedConfirmed: number;
@@ -37,12 +39,14 @@ export default function SyncFromGoogleButton() {
   const { t } = useTranslation();
   const snackbar = useSnackbar();
   const qc = useQueryClient();
+  const { currentClientId } = useAuth();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [errorDetail, setErrorDetail] = useState<SyncRowError[] | null>(null);
 
   const { data: status, isLoading: statusLoading } = useQuery<ConnectionStatus>({
-    queryKey: qk.googleSyncStatus(),
+    queryKey: qk.googleSyncStatus(currentClientId!),
     queryFn: async () => (await api.get('/google-sync/status')).data,
+    enabled: !!currentClientId,
   });
 
   // Detect the OAuth callback bounce-back. The API redirects the browser to
@@ -56,7 +60,7 @@ export default function SyncFromGoogleButton() {
     if (!connected && !errorMsg) return;
     if (connected) {
       snackbar.show(t('sync.connectSuccess'), 'success');
-      qc.invalidateQueries({ queryKey: qk.googleSyncStatus() });
+      qc.invalidateQueries({ queryKey: qk.googleSyncStatus(currentClientId!) });
     } else if (errorMsg) {
       snackbar.show(t('sync.connectError', { message: errorMsg }), 'error');
     }
@@ -79,7 +83,7 @@ export default function SyncFromGoogleButton() {
   const disconnect = useMutation({
     mutationFn: async () => api.delete('/google-sync/connection'),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.googleSyncStatus() });
+      qc.invalidateQueries({ queryKey: qk.googleSyncStatus(currentClientId!) });
       snackbar.show(t('sync.disconnected'), 'success');
     },
     onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
@@ -90,13 +94,14 @@ export default function SyncFromGoogleButton() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['invitations'] });
       qc.invalidateQueries({ queryKey: ['stats'] });
-      qc.invalidateQueries({ queryKey: qk.statsOverview() });
+      qc.invalidateQueries({ queryKey: qk.statsOverview(currentClientId!) });
       setConfirmOpen(false);
       if (data.errors.length > 0) {
         snackbar.show(
           t('sync.completedWithErrors', {
             inserted: data.inserted,
             updated: data.updated,
+            renamed: data.renamed,
             errorCount: data.errors.length,
           }),
           'warning',
@@ -104,7 +109,11 @@ export default function SyncFromGoogleButton() {
         setErrorDetail(data.errors);
       } else {
         snackbar.show(
-          t('sync.completed', { inserted: data.inserted, updated: data.updated }),
+          t('sync.completed', {
+            inserted: data.inserted,
+            updated: data.updated,
+            renamed: data.renamed,
+          }),
           'success',
         );
       }

@@ -9,14 +9,18 @@
     "dashboard": "Pregled",
     "invitations": "Pozivnice",
     "addInvitation": "Dodaj pozivnicu",
-    "seating": "Raspored stolova"
+    "seating": "Raspored stolova",
+    "admin": "Admin",
+    "selectClient": "Izaberi klijenta"
   },
   "login": {
     "title": "Prijava",
     "email": "Email",
     "password": "Lozinka",
     "submit": "Prijavi se",
-    "error": "Pogrešni podaci"
+    "error": "Pogrešni podaci",
+    "orContinueWith": "ili",
+    "googleNoAccount": "Ovaj Google nalog nije registrovan — zatražite od vlasnika da vas doda."
   },
   "auth": {
     "sessionExpired": "Sesija je istekla — prijavite se ponovo.",
@@ -146,11 +150,53 @@
     "disconnected": "Google nalog je odvezan.",
     "confirmTitle": "Sinhronizovati iz Google Sheet-a?",
     "confirmBody": "Redovi iz tabele biće upareni sa pozivnicama po imenu gosta. Novi redovi se dodaju; postojeći se prepisuju vrednostima iz tabele, pa će izmene unete u aplikaciji nakon poslednje sinhronizacije biti izgubljene. Nastaviti?",
-    "completed": "Sinhronizacija završena — dodato {{inserted}}, izmenjeno {{updated}}.",
-    "completedWithErrors": "Sinhronizacija završena uz greške — dodato {{inserted}}, izmenjeno {{updated}}, {{errorCount}} reda nije sinhronizovano.",
+    "completed": "Sinhronizacija završena — dodato {{inserted}}, izmenjeno {{updated}}, preimenovano {{renamed}}.",
+    "completedWithErrors": "Sinhronizacija završena uz greške — dodato {{inserted}}, izmenjeno {{updated}}, preimenovano {{renamed}}, {{errorCount}} reda nije sinhronizovano.",
     "errorsHeader": "Redovi koji nisu sinhronizovani",
     "rowLabel": "Red {{row}}",
     "errorsTruncated": "…još {{count}}"
+  },
+  "admin": {
+    "clients": {
+      "title": "Klijenti",
+      "create": "Napravi klijenta",
+      "createTitle": "Napravi klijenta",
+      "edit": "Izmeni klijenta",
+      "editTitle": "Izmeni klijenta",
+      "save": "Sačuvaj",
+      "delete": "Obriši",
+      "deleteTitle": "Obrisati klijenta?",
+      "deleteWarning": "Trajno obrisati klijenta \"{{name}}\"? SVE pozivnice, rasporedi stolova i dodeljeni članovi biće obrisani. Ova akcija je nepovratna.",
+      "empty": "Još uvek nema klijenata.",
+      "actions": "Akcije",
+      "fields": {
+        "name": "Naziv",
+        "slug": "Slug",
+        "slugHelp": "Identifikator pogodan za URL (opciono, automatski se generiše ako je prazno)",
+        "googleSheetId": "Google Sheet ID",
+        "googleSheetTab": "Google Sheet tab"
+      }
+    },
+    "members": {
+      "title": "Članovi",
+      "add": "Dodaj člana",
+      "addTitle": "Dodaj člana",
+      "remove": "Ukloni",
+      "removeTitle": "Ukloniti člana?",
+      "removeConfirm": "Ukloniti {{email}} sa ovog klijenta? Odmah gubi sav pristup.",
+      "back": "Nazad na klijente",
+      "empty": "Još uvek nema članova.",
+      "fields": {
+        "email": "Email",
+        "displayName": "Ime",
+        "role": "Uloga"
+      },
+      "roles": {
+        "OWNER": "Vlasnik",
+        "EDITOR": "Urednik",
+        "VIEWER": "Pregledač"
+      }
+    }
   },
   "errors": {
     "GENERIC": "Došlo je do greške. Pokušajte ponovo.",

@@ -4,13 +4,16 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard, Roles, RolesGuard } from '../auth/jwt-auth.guard';
+import { ClientContextGuard, CurrentClientId } from '../auth/client-context.guard';
 import { GoogleOauthService } from './google-oauth.service';
 import { GoogleSyncService } from './google-sync.service';
 
 // Guards are applied per-handler instead of at the class level because the
 // `oauth/callback` endpoint MUST be public: Google redirects the browser there
-// as a top-level navigation, so no Authorization header is present. Identity
-// on that endpoint is recovered from the signed `state` HMAC.
+// as a top-level navigation, so no Authorization header (and no X-Client-Id
+// header) is present. Identity on that endpoint is recovered from the signed
+// `state` HMAC. Authenticated handlers add ClientContextGuard so RolesGuard can
+// read req.membershipRole (set only by ClientContextGuard).
 @Controller('google-sync')
 export class GoogleSyncController {
   constructor(
@@ -19,14 +22,14 @@ export class GoogleSyncController {
   ) {}
 
   @Get('status')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, ClientContextGuard, RolesGuard)
   @Roles('OWNER', 'EDITOR')
   status(@Req() req: Request) {
     return this.sync.getStatus((req.user as any).id);
   }
 
   @Get('oauth/url')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, ClientContextGuard, RolesGuard)
   @Roles('OWNER', 'EDITOR')
   authUrl(@Req() req: Request) {
     return { url: this.oauth.buildAuthUrl((req.user as any).id) };
@@ -56,7 +59,7 @@ export class GoogleSyncController {
   }
 
   @Delete('connection')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, ClientContextGuard, RolesGuard)
   @Roles('OWNER', 'EDITOR')
   async disconnect(@Req() req: Request) {
     await this.sync.disconnect((req.user as any).id);
@@ -64,11 +67,11 @@ export class GoogleSyncController {
   }
 
   @Post('run')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, ClientContextGuard, RolesGuard)
   @Roles('OWNER', 'EDITOR')
-  async run(@Req() req: Request) {
+  async run(@Req() req: Request, @CurrentClientId() clientId: string) {
     const userId = (req.user as any)?.id;
     if (!userId) throw new BadRequestException('Missing user');
-    return this.sync.run(userId);
+    return this.sync.run(userId, clientId);
   }
 }

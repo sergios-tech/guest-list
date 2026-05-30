@@ -1,31 +1,56 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Paper, Stack, Typography, TextField, Button, Alert,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../lib/auth';
+import { apiErrorMessage, apiErrorStatus } from '../lib/errors';
+import GoogleLoginButton from '../components/GoogleLoginButton';
 
 export default function Login() {
   const { t, i18n } = useTranslation();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const nav = useNavigate();
   const [email, setEmail] = useState('owner@example.com');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submit = async () => {
-    setBusy(true); setError(null);
-    try {
-      await login(email, password);
-      nav('/');
-    } catch {
-      setError(t('login.error'));
-    } finally {
-      setBusy(false);
-    }
-  };
+  // Shared scaffold for both login paths: toggle busy, clear any prior error,
+  // run the auth call, navigate home on success, and map a failure to a message.
+  const runLogin = useCallback(
+    async (action: () => Promise<void>, mapError: (err: unknown) => string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await action();
+        nav('/');
+      } catch (err) {
+        setError(mapError(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [nav],
+  );
+
+  const submit = () => runLogin(() => login(email, password), () => t('login.error'));
+
+  // The GIS button hands us a Google ID token; trade it for our JWT. Memoised so
+  // its identity is stable across re-renders — GoogleLoginButton's init effect
+  // depends on it. The server returns a single generic 401 for any rejected
+  // Google login ("existing users only"), surfaced as the friendly "ask the
+  // owner" hint; non-401 failures (network, 429, 5xx) get the real error instead.
+  const onGoogleCredential = useCallback(
+    (idToken: string) =>
+      runLogin(
+        () => loginWithGoogle(idToken),
+        (err) =>
+          apiErrorStatus(err) === 401 ? t('login.googleNoAccount') : apiErrorMessage(err, t),
+      ),
+    [runLogin, loginWithGoogle, t],
+  );
 
   return (
     <Box sx={{
@@ -48,6 +73,9 @@ export default function Login() {
             autoComplete="current-password"
           />
           <Button onClick={submit} disabled={busy}>{t('login.submit')}</Button>
+          {/* The "or" divider lives inside GoogleLoginButton so it disappears
+              together with the button when GIS is unavailable. */}
+          <GoogleLoginButton onCredential={onGoogleCredential} disabled={busy} />
           <Box sx={{ textAlign: 'center', mt: 1 }}>
             <Button
               size="small" variant="text"

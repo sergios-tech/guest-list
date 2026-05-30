@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A multi-user guest list web app whose data model is derived from `db/Spisak gostiju za svadbu.xlsx`. The spreadsheet shape leaks intentionally into the design: invitation rows = spreadsheet rows, the `=D+E` total formula is reproduced as a Postgres generated column, and the K/L summary block is replaced by the `v_invitation_stats` view.
+A multi-user, **multi-client (multi-tenant)** guest list web app whose data model is derived from `db/Spisak gostiju za svadbu.xlsx`. The spreadsheet shape leaks intentionally into the design: invitation rows = spreadsheet rows, the `=D+E` total formula is reproduced as a Postgres generated column, and the K/L summary block is replaced by the `v_invitation_stats` view.
+
+Each **client** is a tenant (one wedding/event) that owns its invitations, seating plans, and Google Sheet config. A **user** can belong to many clients, each with its own role; a **platform super-admin** manages clients and memberships. See "Multi-tenancy" below.
 
 Stack: Postgres 16 / NestJS 10 + TypeORM / Vite + React 18 (MUI, AG Grid Community, react-i18next) / nginx ingress, glued together by Docker Compose.
 
@@ -66,6 +68,19 @@ Things the DB enforces that the app relies on:
 - `pg_trgm` GIN index on `guest_label` powers the `ILike('%q%')` search in `InvitationsService.list`.
 - `v_invitation_stats` is the only thing `GET /api/stats/overview` reads. If you add new stats, extend the view rather than computing in the service.
 
+### Multi-tenancy
+
+Tenancy is the spine of the data model. Read this before touching any query.
+
+- **Two aggregate roots carry `client_id`**: `invitation` and `seating_plan` (both `NOT NULL REFERENCES client(id) ON DELETE CASCADE`). `attendee`, `seating_table`, and `seat` have **no** `client_id` — they inherit their tenant transitively through their parent FK, so scope them by joining/filtering through the parent (see `AttendeesService.assertInvitationInClient` and the per-plan checks in `SeatingService`).
+- **`client`** holds the per-tenant Google Sheet config (`google_sheet_id`, `google_sheet_tab`) that used to be global env vars. **`user_client`** is the membership join (composite PK `user_id,client_id`) with the per-client `role` — this is the **authoritative role**. `app_user.role` is legacy and no longer read by auth; `app_user.is_super_admin` gates the platform-admin surface and is orthogonal to per-client roles.
+- **Current client = the `X-Client-Id` request header.** `ClientContextGuard` (`auth/client-context.guard.ts`) validates it against the caller's `user_client` membership and sets `req.clientId` + `req.membershipRole`. The JWT shrank to `{ sub, email }` — role is resolved per request, so switching clients needs no token reissue and role changes take effect immediately (same rationale as `jwt.strategy` re-reading the user each request).
+- **Guard order matters**: tenant-scoped controllers use `@UseGuards(JwtAuthGuard, ClientContextGuard, RolesGuard)`. `RolesGuard` reads `req.membershipRole` (set only by `ClientContextGuard`), so the two must be paired. Inject the tenant with the `@CurrentClientId()` param decorator and pass it into every service method. Any module whose controller uses `ClientContextGuard` must register it in `providers` and import `TypeOrmModule.forFeature([UserClient])`.
+- **Platform admin** (`modules/clients/`) is gated by `SuperAdminGuard` (not `ClientContextGuard`) — a super-admin operates across all clients. `POST /api/auth/register` is super-admin-only now and returns a user view (not a token); `GET /api/auth/me` returns the caller's memberships for the frontend's client selector.
+- **The stats view is grouped by client** (`v_invitation_stats` has a leading `client_id` + `GROUP BY client_id`). The service reads `WHERE client_id = $1`; a client with zero invitations yields **no row**, so `StatsService` coalesces to all-zeros. New stats still belong in the view, not the service.
+- **The one-active-plan rule is per-client**: `ux_seating_plan_one_active` is `UNIQUE (client_id) WHERE is_active = true`. Each client has its own active plan.
+- **Frontend**: `lib/auth.tsx` holds `currentClientId` + `currentRole` and a `switchClient()` that clears the TanStack cache; `lib/api.ts` sends `X-Client-Id` from localStorage; **every tenant-scoped query key is prefixed with `clientId`** (`lib/queryKeys.ts`) so cached data can't bleed across clients. The AppBar shows a client selector when the user has >1 membership; super-admins get `/admin/clients`.
+
 ### Serbian enum values
 
 `rsvp_status` uses `NIJE_POZVAN | POZVAN | ODBIJENO | POTVRDJEN_DOLAZAK` (the Serbian source spreadsheet's vocabulary). TypeScript exposes them as the `RsvpStatus` enum but the wire format and DB values stay Serbian. Don't "normalize" them to English — UI translation happens via `react-i18next` in `web/src/i18n/locales/{en,sr}.json`.
@@ -80,6 +95,8 @@ Things the DB enforces that the app relies on:
 Global `ValidationPipe` is configured with `whitelist: true, transform: true, forbidNonWhitelisted: true` in `main.ts`. Extra body fields cause a 400; rely on this rather than re-validating in services.
 
 JWT secret is read from `process.env.JWT_SECRET` in two places (`auth.module.ts` and `jwt.strategy.ts`) — keep them in sync. Both fall back to `'dev-secret'`.
+
+**Google login** (`POST /api/auth/google`, public) is distinct from the Sheets-sync OAuth: it verifies a Google **ID token** (sent by the frontend's GIS button) with `google-auth-library`'s `verifyIdToken`, stores nothing, and issues the same JWT as password login. Policy is **existing-users-only** — the verified email must match an active `app_user` (mirrors `jwt.strategy`'s `deletedAt: IsNull()` filter) or it 401s; it never creates users, so there is no schema change and `password_hash NOT NULL` is never an issue. The frontend reads the (public) client id from `GET /api/auth/config`. Both flows share `GOOGLE_OAUTH_CLIENT_ID` via `config/google.config.ts`. Login uses GIS **Authorized JavaScript origins** in Google Console (not a redirect URI); the consent screen's Testing-mode 7-day refresh limit is irrelevant here since login needs no refresh token.
 
 All routes are prefixed `/api` (`app.setGlobalPrefix('api')` in `main.ts`), so nginx's `location /api/` matches without rewriting paths.
 
@@ -103,6 +120,12 @@ Live at `https://guests.sergiotech.com`, hosted on the same machine that serves 
 
 - **CI**: `.github/workflows/deploy.yml` fires on push to `main`/`master`. It SSHes to the server, does `git reset --hard origin/<branch>`, `docker compose up -d --build`, and waits for the API healthcheck. Secrets needed: `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`, `KNOWN_HOSTS`.
 - **Never `docker compose down -v` in prod.** The schema in `db/01_schema.sql` only runs on an empty `pgdata` volume; wiping the volume nukes all RSVPs and seating data. The deploy workflow is `up -d --build` only — no `down`, no `-v`.
+- **Schema migrations are manual.** There is no migration framework and CI does **not** run migrations. `db/01_schema.sql` is for fresh volumes only; to change a live prod DB, write an idempotent script under `db/migrations/` and run it once by hand against the existing volume (back up first). The multi-tenancy upgrade is `db/migrations/03_multitenancy.sql` — verified idempotent (safe to re-run). Apply with:
+  ```bash
+  ./scripts/backup.sh
+  docker compose exec -T db psql -U dbuser -d guests < db/migrations/03_multitenancy.sql
+  ```
+  Keep `db/01_schema.sql` and the matching migration in sync (fresh-install vs upgrade must converge to the same shape).
 - **Backups**: `scripts/backup.sh` runs `pg_dump` inside the `db` container and gzips into `~/backups/guest-list/`. Scheduled by `systemd/guest-list-backup.timer` (daily ~03:07 UTC, 14-day retention). Install the units with:
   ```bash
   sudo cp systemd/guest-list-backup.{service,timer} /etc/systemd/system/
@@ -118,14 +141,15 @@ Live at `https://guests.sergiotech.com`, hosted on the same machine that serves 
 
 `api/src/modules/google-sync/` lets OWNER/EDITOR users connect a Google account (OAuth authorization code flow, scope `spreadsheets.readonly`) and click "Sync from Google Sheet" on the Dashboard to upsert invitations from a configured sheet.
 
-- Per-user refresh tokens live in the `user_google_credential` table, encrypted with AES-256-GCM. The encryption key comes from `GOOGLE_TOKEN_ENC_KEY` (32 bytes, hex). All `GOOGLE_*` env vars are wired in `docker-compose.yml` (`GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI`, `GOOGLE_TOKEN_ENC_KEY`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_TAB`).
+- Per-user refresh tokens live in the `user_google_credential` table, encrypted with AES-256-GCM. The encryption key comes from `GOOGLE_TOKEN_ENC_KEY` (32 bytes, hex). The OAuth/credential vars are wired in `docker-compose.yml` (`GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI`, `GOOGLE_TOKEN_ENC_KEY`).
+- **Sheet config is per-client**, not global. The spreadsheet id/tab now live on the `client` row (`google_sheet_id`, `google_sheet_tab`); `GoogleSyncService.run(userId, clientId)` reads them from the current client and 400s if the client has no sheet configured. The old `GOOGLE_SHEET_ID`/`GOOGLE_SHEET_TAB` env vars are no longer read (the migration/seed seed the Default client with the former defaults). The OAuth connection itself stays per-user (`user_google_credential` keyed by `user_id`).
 - Sheet columns must match `db/generate_seed.py` (A=guest, B=planned, C=status [Serbian], D=adults, E=children, G=forecast, H=date, I=napomena). `sheet-parser.util.ts` is a TS port of that script — keep them aligned.
-- Reconciliation is "sheet wins" — upsert by `guest_label`. Manual UI edits to a row are overwritten on the next sync.
+- Reconciliation is "sheet wins" — upsert by `(guest_label, client_id)`. The match is **client-scoped**, so two clients can have identically-named guests without corrupting each other. Manual UI edits to a row are overwritten on the next sync.
 - The OAuth callback (`GET /api/google-sync/oauth/callback`) is unauthenticated and recovers identity from a signed `state` HMAC. Don't apply `JwtAuthGuard` to it.
 
 ## Conventions to preserve
 
-- **Schema changes** go in `db/01_schema.sql`. If they need to apply to an existing volume, drop the volume (`docker compose down -v`) — there's no migration framework.
-- **New seed data** should round-trip through `db/generate_seed.py` so the xlsx-derived workflow keeps working.
-- **New stats** belong in `v_invitation_stats`, not in the service.
-- **Role-gated writes** are added by decorating controllers with `@Roles(...)` and `@UseGuards(JwtAuthGuard, RolesGuard)` — the wiring exists, just unused.
+- **Schema changes** go in `db/01_schema.sql` (fresh installs). For an existing volume in **dev** you can drop it (`docker compose down -v`); for **prod** write an idempotent `db/migrations/NN_*.sql` and run it by hand (see Production deploy). The entity classes in `api/src/entities/` are hand-maintained mirrors and must be registered in `config/typeorm.config.ts` (and `data-source.ts`).
+- **New seed data** should round-trip through `db/generate_seed.py` so the xlsx-derived workflow keeps working. The generator seeds the Default `client`, the owner's `user_client` membership, and `client_id` on every invitation row.
+- **New stats** belong in `v_invitation_stats`, not in the service — and the view is grouped by `client_id`.
+- **Tenant-scoped reads/writes**: decorate the controller with `@UseGuards(JwtAuthGuard, ClientContextGuard, RolesGuard)` + `@Roles(...)`, take `@CurrentClientId()`, and filter/stamp `client_id` in the service. **Platform-admin** endpoints use `@UseGuards(JwtAuthGuard, SuperAdminGuard)` instead (no client context). See "Multi-tenancy".

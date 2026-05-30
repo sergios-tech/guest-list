@@ -1,6 +1,7 @@
 import { useMemo, useState, useDeferredValue } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
 import { AgGridReact } from 'ag-grid-react';
 import type { CustomCellEditorProps } from 'ag-grid-react';
 import type {
@@ -89,6 +90,7 @@ export default function Invitations() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const snackbar = useSnackbar();
+  const { currentClientId } = useAuth();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [q, setQ] = useState('');
@@ -100,18 +102,20 @@ export default function Invitations() {
   const [inlineEditing, setInlineEditing] = useState(false);
 
   const { data = [] } = useQuery<Invitation[]>({
-    queryKey: qk.invitations(deferredQ, status),
+    queryKey: qk.invitations(currentClientId!, deferredQ, status),
     queryFn: async () => (await api.get('/invitations', {
       params: { q: deferredQ || undefined, status: status || undefined },
     })).data,
+    enabled: !!currentClientId,
     // Keep the previous result mounted while a new fetch runs so the grid
     // doesn't flash empty between keystrokes.
     placeholderData: (prev) => prev,
   });
 
   const { data: stats } = useQuery<Stats>({
-    queryKey: qk.statsOverview(),
+    queryKey: qk.statsOverview(currentClientId!),
     queryFn: async () => (await api.get('/stats/overview')).data,
+    enabled: !!currentClientId,
   });
 
   const dateLocale = i18n.language === 'sr' ? 'sr-Latn-RS' : 'en-GB';

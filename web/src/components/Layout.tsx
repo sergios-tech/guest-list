@@ -9,6 +9,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import LogoutIcon from '@mui/icons-material/Logout';
+import BusinessIcon from '@mui/icons-material/Business';
 import { useTheme } from '@mui/material/styles';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -21,7 +22,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
   const { t, i18n } = useTranslation();
-  const { logout } = useAuth();
+  const { logout, clients, currentClientId, switchClient, user } = useAuth();
   const loc = useLocation();
 
   const drawer = (
@@ -50,6 +51,16 @@ export default function Layout({ children }: { children: ReactNode }) {
           <ListItemIcon><TableRestaurantIcon /></ListItemIcon>
           <ListItemText primary={t('nav.seating')} />
         </ListItemButton>
+        {user?.isSuperAdmin && (
+          <ListItemButton
+            component={Link} to="/admin/clients"
+            selected={loc.pathname.startsWith('/admin')}
+            onClick={() => setMobileOpen(false)}
+          >
+            <ListItemIcon><BusinessIcon /></ListItemIcon>
+            <ListItemText primary={t('nav.admin')} />
+          </ListItemButton>
+        )}
       </List>
     </Box>
   );
@@ -74,6 +85,30 @@ export default function Layout({ children }: { children: ReactNode }) {
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             {t('app.title')}
           </Typography>
+          {/* Tenant selector: multi-client → dropdown; single client → label; 0 → nothing */}
+          {clients.length > 1 && (
+            <Select
+              size="small"
+              value={currentClientId ?? ''}
+              onChange={(e) => switchClient(e.target.value)}
+              aria-label={t('nav.selectClient')}
+              sx={{
+                color: 'inherit',
+                mr: 1,
+                '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
+                '.MuiSvgIcon-root': { color: 'inherit' },
+              }}
+            >
+              {clients.map((c) => (
+                <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+              ))}
+            </Select>
+          )}
+          {clients.length === 1 && (
+            <Typography variant="body2" sx={{ mr: 1, opacity: 0.85 }}>
+              {clients[0].name}
+            </Typography>
+          )}
           <Select
             size="small"
             value={i18n.language.startsWith('en') ? 'en' : 'sr'}

@@ -9,6 +9,10 @@ export class SeatingPlan {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  // Tenant owner. The one-active-plan constraint is per-client.
+  @Column({ name: 'client_id', type: 'uuid' })
+  clientId!: string;
+
   @Column()
   name!: string;
 

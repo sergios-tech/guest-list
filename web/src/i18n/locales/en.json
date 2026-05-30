@@ -9,14 +9,18 @@
     "dashboard": "Dashboard",
     "invitations": "Invitations",
     "addInvitation": "Add Invitation",
-    "seating": "Seating"
+    "seating": "Seating",
+    "admin": "Admin",
+    "selectClient": "Select client"
   },
   "login": {
     "title": "Sign in",
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
-    "error": "Invalid credentials"
+    "error": "Invalid credentials",
+    "orContinueWith": "or",
+    "googleNoAccount": "This Google account isn't registered — ask the owner to add you."
   },
   "auth": {
     "sessionExpired": "Your session expired — please sign in again.",
@@ -146,11 +150,53 @@
     "disconnected": "Google account disconnected.",
     "confirmTitle": "Sync from Google Sheet?",
     "confirmBody": "Rows from the sheet will be matched to invitations by guest name. New rows are added; existing rows are overwritten with sheet values, so edits made in this app since the last sync will be lost. Continue?",
-    "completed": "Sync done — {{inserted}} added, {{updated}} updated.",
-    "completedWithErrors": "Sync done with issues — {{inserted}} added, {{updated}} updated, {{errorCount}} row(s) failed.",
+    "completed": "Sync done — {{inserted}} added, {{updated}} updated, {{renamed}} renamed.",
+    "completedWithErrors": "Sync done with issues — {{inserted}} added, {{updated}} updated, {{renamed}} renamed, {{errorCount}} row(s) failed.",
     "errorsHeader": "Rows that did not sync",
     "rowLabel": "Row {{row}}",
     "errorsTruncated": "…and {{count}} more"
+  },
+  "admin": {
+    "clients": {
+      "title": "Clients",
+      "create": "Create client",
+      "createTitle": "Create client",
+      "edit": "Edit client",
+      "editTitle": "Edit client",
+      "save": "Save",
+      "delete": "Delete",
+      "deleteTitle": "Delete client?",
+      "deleteWarning": "Permanently delete client \"{{name}}\"? ALL its invitations, seating plans, and member assignments will be deleted. This cannot be undone.",
+      "empty": "No clients yet.",
+      "actions": "Actions",
+      "fields": {
+        "name": "Name",
+        "slug": "Slug",
+        "slugHelp": "URL-friendly identifier (optional, auto-generated if blank)",
+        "googleSheetId": "Google Sheet ID",
+        "googleSheetTab": "Google Sheet Tab"
+      }
+    },
+    "members": {
+      "title": "Members",
+      "add": "Add member",
+      "addTitle": "Add member",
+      "remove": "Remove",
+      "removeTitle": "Remove member?",
+      "removeConfirm": "Remove {{email}} from this client? They will lose all access immediately.",
+      "back": "Back to clients",
+      "empty": "No members yet.",
+      "fields": {
+        "email": "Email",
+        "displayName": "Name",
+        "role": "Role"
+      },
+      "roles": {
+        "OWNER": "Owner",
+        "EDITOR": "Editor",
+        "VIEWER": "Viewer"
+      }
+    }
   },
   "errors": {
     "GENERIC": "Something went wrong. Please try again.",

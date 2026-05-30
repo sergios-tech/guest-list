@@ -4,14 +4,16 @@ import { SeatingPlan } from '../../entities/seating-plan.entity';
 import { SeatingTable } from '../../entities/seating-table.entity';
 import { Seat } from '../../entities/seat.entity';
 import { Invitation } from '../../entities/invitation.entity';
+import { UserClient } from '../../entities/user-client.entity';
+import { ClientContextGuard } from '../auth/client-context.guard';
 import { SeatingController } from './seating.controller';
 import { SeatingService } from './seating.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([
-    SeatingPlan, SeatingTable, Seat, Invitation,
+    SeatingPlan, SeatingTable, Seat, Invitation, UserClient,
   ])],
   controllers: [SeatingController],
-  providers: [SeatingService],
+  providers: [SeatingService, ClientContextGuard],
 })
 export class SeatingModule {}

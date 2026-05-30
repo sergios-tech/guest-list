@@ -14,8 +14,9 @@ import { useTranslation } from 'react-i18next';
 import { useDebouncedCallback } from 'use-debounce';
 import { api } from '../lib/api';
 import { qk } from '../lib/queryKeys';
+import { useAuth } from '../lib/auth';
 import { useSnackbar } from '../lib/snackbar';
-import { apiErrorMessage } from '../lib/errors';
+import { apiErrorMessage, apiErrorStatus } from '../lib/errors';
 import { RSVP_STATUSES, ACCOMMODATION_TYPES, type RsvpStatus, type AccommodationType } from '../lib/enums';
 import { AccommodationChip, StatusChip } from '../components/Chips';
 
@@ -52,6 +53,7 @@ export default function InvitationDetail() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const snackbar = useSnackbar();
+  const { currentClientId } = useAuth();
   const isNew = !id;
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
@@ -65,9 +67,9 @@ export default function InvitationDetail() {
   const status = watch('status');
 
   const { data: invitation } = useQuery({
-    queryKey: id ? qk.invitation(id) : ['invitation', 'new'],
+    queryKey: id ? qk.invitation(currentClientId!, id) : ['invitation', 'new'],
     queryFn: async () => (await api.get(`/invitations/${id}`)).data,
-    enabled: !isNew,
+    enabled: !isNew && !!currentClientId,
   });
 
   useEffect(() => {
@@ -114,16 +116,16 @@ export default function InvitationDetail() {
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['invitations'] });
       qc.invalidateQueries({ queryKey: ['stats'] });
-      if (!isNew) qc.invalidateQueries({ queryKey: qk.invitation(id!) });
+      if (!isNew) qc.invalidateQueries({ queryKey: qk.invitation(currentClientId!, id!) });
       snackbar.show(t(isNew ? 'invitation.created' : 'invitation.updated'), 'success');
       if (isNew) nav(`/invitations/${saved.id}`, { replace: true });
     },
     onError: (err) => {
-      const status = (err as { response?: { status?: number } }).response?.status;
+      const status = apiErrorStatus(err);
       if (status === 409) {
         // Optimistic-concurrency conflict: someone else saved first. Refetch
         // so the user sees the latest values before retrying.
-        if (!isNew) qc.invalidateQueries({ queryKey: qk.invitation(id!) });
+        if (!isNew) qc.invalidateQueries({ queryKey: qk.invitation(currentClientId!, id!) });
       }
       snackbar.show(apiErrorMessage(err, t), 'error');
     },
@@ -294,17 +296,19 @@ function AttendeeList({ invitationId }: { invitationId: string }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const snackbar = useSnackbar();
+  const { currentClientId } = useAuth();
   const [draft, setDraft] = useState<{ fullName: string; isChild: boolean }>({
     fullName: '', isChild: false,
   });
 
   const { data: attendees = [] } = useQuery<Attendee[]>({
-    queryKey: qk.attendees(invitationId),
+    queryKey: qk.attendees(currentClientId!, invitationId),
     queryFn: async () =>
       (await api.get(`/attendees/by-invitation/${invitationId}`)).data,
+    enabled: !!currentClientId,
   });
 
-  const refresh = () => qc.invalidateQueries({ queryKey: qk.attendees(invitationId) });
+  const refresh = () => qc.invalidateQueries({ queryKey: qk.attendees(currentClientId!, invitationId) });
 
   const add = useMutation({
     mutationFn: async () =>

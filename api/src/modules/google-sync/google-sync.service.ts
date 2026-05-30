@@ -6,15 +6,15 @@ import { QueryFailedError, Repository } from 'typeorm';
 import { google } from 'googleapis';
 import { Invitation } from '../../entities/invitation.entity';
 import { UserGoogleCredential } from '../../entities/user-google-credential.entity';
+import { Client } from '../../entities/client.entity';
 import { GoogleOauthService } from './google-oauth.service';
-import { parseRow, ParsedRow, RawSheetRow } from './sheet-parser.util';
+import { parseRow, RawSheetRow } from './sheet-parser.util';
+import { classifyRows, SheetRowInput } from './reconcile.util';
 
-function envSheetId(): string {
-  return (process.env.GOOGLE_SHEET_ID ?? '1gsydyLPpQH3bJoppdZoLYjlq3zKexlc-qWnuYnujeQM').trim();
-}
-function envSheetTab(): string {
-  return (process.env.GOOGLE_SHEET_TAB ?? 'Pozivnice').trim();
-}
+// Default sheet tab when a client row leaves google_sheet_tab unset. The sheet
+// id is now per-client (Client.googleSheetId) and has no env fallback — a client
+// with no configured sheet id cannot sync.
+const DEFAULT_SHEET_TAB = 'Pozivnice';
 
 export interface SyncRowError {
   rowNumber: number;
@@ -25,6 +25,7 @@ export interface SyncRowError {
 export interface SyncResult {
   inserted: number;
   updated: number;
+  renamed: number;
   skipped: number;
   unknownStatuses: number;
   demotedConfirmed: number;
@@ -44,6 +45,7 @@ export class GoogleSyncService {
   constructor(
     @InjectRepository(Invitation) private readonly invitations: Repository<Invitation>,
     @InjectRepository(UserGoogleCredential) private readonly creds: Repository<UserGoogleCredential>,
+    @InjectRepository(Client) private readonly clients: Repository<Client>,
     private readonly oauth: GoogleOauthService,
   ) {}
 
@@ -61,7 +63,19 @@ export class GoogleSyncService {
     await this.oauth.disconnect(userId);
   }
 
-  async run(userId: string): Promise<SyncResult> {
+  async run(userId: string, clientId: string): Promise<SyncResult> {
+    // Sheet config is per-client (was previously global env vars). Resolve the
+    // current tenant's sheet id/tab before touching Google.
+    const client = await this.clients.findOne({ where: { id: clientId } });
+    if (!client) {
+      throw new BadRequestException('No Google Sheet configured for this client');
+    }
+    const sheetId = client.googleSheetId?.trim();
+    if (!sheetId) {
+      throw new BadRequestException('No Google Sheet configured for this client');
+    }
+    const sheetTab = (client.googleSheetTab?.trim() || DEFAULT_SHEET_TAB);
+
     const auth = await this.oauth.getAuthorizedClient(userId).catch((err) => {
       if (err instanceof NotFoundException) {
         throw new BadRequestException({
@@ -78,8 +92,8 @@ export class GoogleSyncService {
     let values: unknown[][] = [];
     try {
       const resp = await sheets.spreadsheets.values.get({
-        spreadsheetId: envSheetId(),
-        range: `${envSheetTab()}!A2:I`,
+        spreadsheetId: sheetId,
+        range: `${sheetTab}!A2:I`,
         valueRenderOption: 'UNFORMATTED_VALUE',
         dateTimeRenderOption: 'FORMATTED_STRING',
       });
@@ -104,10 +118,12 @@ export class GoogleSyncService {
     }
 
     const result: SyncResult = {
-      inserted: 0, updated: 0, skipped: 0,
+      inserted: 0, updated: 0, renamed: 0, skipped: 0,
       unknownStatuses: 0, demotedConfirmed: 0, errors: [],
     };
 
+    // Parse every sheet row first, tallying parse-level outcomes.
+    const sheetRows: SheetRowInput[] = [];
     for (let i = 0; i < values.length; i++) {
       const rowNumber = i + 2;  // sheet rows are 1-indexed; data starts at row 2
       const cells = values[i] ?? [];
@@ -131,48 +147,59 @@ export class GoogleSyncService {
       }
       if (parsed.unknownStatus) result.unknownStatuses++;
       if (parsed.demoted) result.demotedConfirmed++;
+      sheetRows.push({ rowNumber, row: parsed.row });
+    }
 
+    // Load every invitation for this client once, then classify in memory.
+    // "Sheet wins" reconciliation: pass-1 exact label match, pass-2 similarity
+    // rename detection. Orphans (in DB, gone from sheet) are left untouched here.
+    const existing = await this.invitations.find({ where: { clientId } });
+    const byId = new Map(existing.map((e) => [e.id, e]));
+    const plan = classifyRows(
+      sheetRows,
+      existing.map((e) => ({ id: e.id, guestLabel: e.guestLabel, createdAt: e.createdAt })),
+    );
+
+    // Apply: each op is isolated so one bad row can't abort the whole sync.
+    for (const ins of plan.inserts) {
       try {
-        await this.upsertByGuestLabel(parsed.row, userId, result);
+        const entity = this.invitations.create({
+          ...ins.row, clientId, createdBy: userId, updatedBy: userId,
+        });
+        await this.invitations.save(entity);
+        result.inserted++;
       } catch (err) {
         result.errors.push({
-          rowNumber,
-          guestLabel: parsed.row.guestLabel,
-          message: formatRowError(err),
+          rowNumber: ins.rowNumber, guestLabel: ins.row.guestLabel, message: formatRowError(err),
+        });
+      }
+    }
+    for (const upd of plan.updates) {
+      try {
+        const entity = byId.get(upd.id)!;
+        Object.assign(entity, upd.row, { updatedBy: userId });
+        await this.invitations.save(entity);
+        result.updated++;
+      } catch (err) {
+        result.errors.push({
+          rowNumber: upd.rowNumber, guestLabel: upd.row.guestLabel, message: formatRowError(err),
+        });
+      }
+    }
+    for (const ren of plan.renames) {
+      try {
+        const entity = byId.get(ren.id)!;
+        Object.assign(entity, ren.row, { updatedBy: userId });
+        await this.invitations.save(entity);
+        result.renamed++;
+      } catch (err) {
+        result.errors.push({
+          rowNumber: ren.rowNumber, guestLabel: ren.row.guestLabel, message: formatRowError(err),
         });
       }
     }
 
     return result;
-  }
-
-  private async upsertByGuestLabel(
-    row: ParsedRow,
-    userId: string,
-    result: SyncResult,
-  ): Promise<void> {
-    // Match generate_seed.py's identity assumption: guest_label is the natural
-    // key. (There's no UNIQUE constraint on it in the DB, so collisions would
-    // mean someone manually created a duplicate row — extremely rare for a
-    // wedding list. If we hit one, we update the first match deterministically.)
-    const existing = await this.invitations.findOne({
-      where: { guestLabel: row.guestLabel },
-      order: { createdAt: 'ASC' },
-    });
-
-    if (existing) {
-      Object.assign(existing, row, { updatedBy: userId });
-      await this.invitations.save(existing);
-      result.updated++;
-    } else {
-      const entity = this.invitations.create({
-        ...row,
-        createdBy: userId,
-        updatedBy: userId,
-      });
-      await this.invitations.save(entity);
-      result.inserted++;
-    }
   }
 }
 

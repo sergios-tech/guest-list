@@ -6,10 +6,11 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { getJwtSecret } from '../../config/jwt.config';
 import { User } from '../../entities/user.entity';
 
+// Role is no longer carried in the token — it is now per-client and resolved
+// from the user_client membership by ClientContextGuard on each request.
 export interface JwtPayload {
   sub: string;
   email: string;
-  role: 'OWNER' | 'EDITOR' | 'VIEWER';
 }
 
 @Injectable()
@@ -31,10 +32,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     const u = await this.users.findOne({
       where: { id: payload.sub, deletedAt: IsNull() },
-      select: ['id', 'email', 'role'],
+      select: ['id', 'email', 'isSuperAdmin'],
     });
     if (!u) throw new UnauthorizedException();
-    // attached to request.user
-    return { id: u.id, email: u.email, role: u.role };
+    // attached to request.user. The per-client role is resolved later by
+    // ClientContextGuard from the X-Client-Id header + user_client membership.
+    return { id: u.id, email: u.email, isSuperAdmin: u.isSuperAdmin };
   }
 }

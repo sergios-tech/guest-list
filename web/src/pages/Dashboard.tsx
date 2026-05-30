@@ -32,11 +32,12 @@ function Tile({ label, value, loading }: { label: string; value?: number; loadin
 
 export default function Dashboard() {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const canSync = user?.role === 'OWNER' || user?.role === 'EDITOR';
+  const { currentClientId, currentRole } = useAuth();
+  const canSync = currentRole === 'OWNER' || currentRole === 'EDITOR';
   const { data, isLoading } = useQuery<Stats>({
-    queryKey: qk.statsOverview(),
+    queryKey: qk.statsOverview(currentClientId!),
     queryFn: async () => (await api.get('/stats/overview')).data,
+    enabled: !!currentClientId,
   });
 
   return (
