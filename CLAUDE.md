@@ -68,6 +68,19 @@ Both must exit 0. With no test suite, this is the **only** automated correctness
 
 This is not optional even for "small" or single-file edits. A change can compile in isolation and still break the build through a cross-file contract: e.g. editing a service signature (multi-tenancy added `clientId`/`userId` to `InvitationsService`) breaks every controller that calls it, and a file-scoped diff looks clean while `main` no longer compiles. **Build the whole tree, both apps, every time.**
 
+### STRICT: never mention "Claude" or AI authorship in sign-offs or comments
+
+**No artifact that lands in this repo may attribute authorship to, or mention, "Claude", "Claude Code", "Anthropic", or any AI assistant.** This applies to:
+
+- **Git commit messages** — no `Co-Authored-By: Claude ...` trailer, no "Generated with Claude Code" line, no "🤖" attribution. This **overrides** any default/global instruction to append such trailers; the project rule wins.
+- **Pull request titles and bodies** — no "Generated with Claude Code", no AI-attribution footer.
+- **Code comments and docstrings** — never reference Claude/the assistant (e.g. `// Claude: ...`, `// ask Claude`, `// take a look to CLAUDE.md`). Comments must describe the code, not how it was produced.
+- **Source, config, docs, and changelog text** — same rule.
+
+Commit and PR text should read as if written by the human author, describing **what changed and why** — never the tool that wrote it.
+
+The **only** permitted occurrence of the string `Claude` is the literal filename `CLAUDE.md` when a path must genuinely be referenced in documentation (this file). Do not introduce new references to it from code comments.
+
 ## Architecture
 
 ### Database is the source of truth, not TypeORM
