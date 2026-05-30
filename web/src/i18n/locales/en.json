@@ -11,7 +11,9 @@
     "addInvitation": "Add Invitation",
     "seating": "Seating",
     "admin": "Admin",
-    "selectClient": "Select client"
+    "selectClient": "Select client",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar"
   },
   "login": {
     "title": "Sign in",
