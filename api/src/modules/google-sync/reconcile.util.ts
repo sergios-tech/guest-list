@@ -3,7 +3,7 @@
 // (optionally) unit-tested in isolation. See
 // docs/superpowers/specs/2026-05-29-sheet-sync-rename-matching-design.md.
 
-import { ParsedAttendee, ParsedRow } from './sheet-parser.util';
+import { norm, ParsedAttendee, ParsedRow } from './sheet-parser.util';
 
 // One parsed sheet row plus its 1-indexed sheet row number (used only for
 // per-row error reporting in the apply loop).
@@ -36,9 +36,10 @@ const STOPWORDS = new Set(['i', '&', 'and', 'und']);
 
 // Pass-1 exact-match key: NFC + trim, case-sensitive (mirrors today's match on
 // the parser's guest_label so we don't accidentally merge differently-cased
-// names). nameSimilarity does its own lowercasing for the fuzzy pass.
+// names). nameSimilarity does its own lowercasing for the fuzzy pass. Shares the
+// parser's `norm` so the canonical NFC+trim lives in one place.
 export function normalizeLabel(label: string): string {
-  return (label ?? '').normalize('NFC').trim();
+  return norm(label);
 }
 
 function tokenize(label: string): Set<string> {
@@ -97,11 +98,12 @@ export interface AttendeeReconcilePlan {
   toDeleteIds: string[];
 }
 
-// Match key: NFC + lowercase + collapse internal whitespace. Names are matched
-// case-insensitively so "Igor" in a seated DB row keeps its id when the sheet
-// later writes "igor".
+// Match key: shared NFC+trim (norm) + lowercase + collapse internal whitespace.
+// Names are matched case-insensitively so "Igor" in a seated DB row keeps its id
+// when the sheet later writes "igor". (norm trims first; the collapse adds no
+// leading/trailing space, so the result equals normalize+lower+collapse+trim.)
 function attendeeKey(name: string): string {
-  return (name ?? '').normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
+  return norm(name).toLowerCase().replace(/\s+/g, ' ');
 }
 
 /**
