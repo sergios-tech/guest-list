@@ -207,10 +207,16 @@ export default function Seating() {
     for (const tbl of plan.tables) {
       const s = tbl.seats.find((x) => x.id === src.seatId);
       if (s) {
-        return s.attendeeName
-          ?? (s.invitationLabel && s.slotIndex != null
-            ? `${t('seating.guestSlot', { index: s.slotIndex })} · ${s.invitationLabel}`
-            : '…');
+        if (s.attendeeName) {
+          // Mirror the seat's two-line display: append the family/guest label
+          // unless it would merely echo the attendee's own name.
+          return s.invitationLabel && s.invitationLabel !== s.attendeeName
+            ? `${s.attendeeName} · ${s.invitationLabel}`
+            : s.attendeeName;
+        }
+        return s.invitationLabel && s.slotIndex != null
+          ? `${t('seating.guestSlot', { index: s.slotIndex })} · ${s.invitationLabel}`
+          : '…';
       }
     }
     return '…';

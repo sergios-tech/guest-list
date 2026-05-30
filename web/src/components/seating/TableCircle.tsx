@@ -14,6 +14,17 @@ const ORBIT_R = 92;
 const SEAT_R = 16;        // seat circle radius
 const NAME_W = 96;        // width of the name label box
 
+// Shared single-line truncation for the seat's name labels: clamp to the label
+// width and ellipsize overflow. Both the attendee name and the family sub-label
+// build on this so the truncation behaviour can't drift between them.
+const truncatedLabelSx = {
+  maxWidth: NAME_W,
+  textAlign: 'center',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+} as const;
+
 interface SeatPosition {
   cx: number;
   cy: number;
@@ -50,6 +61,14 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
     ?? (seat.invitationLabel && seat.slotIndex != null
       ? `${t('seating.guestSlot', { index: seat.slotIndex })} · ${seat.invitationLabel}`
       : null);
+
+  // The small grey family/guest label shown beneath the attendee name.
+  // Shown only for named attendees, and suppressed when it would merely
+  // echo the name above (single-person invitations where attendee == family).
+  const familyLabel: string | null =
+    seat.attendeeName && seat.invitationLabel && seat.invitationLabel !== seat.attendeeName
+      ? seat.invitationLabel
+      : null;
 
   const dropId = `seat:${seat.id}` as const;
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: dropId });
@@ -96,7 +115,7 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
           role={occupied ? 'button' : undefined}
           aria-label={
             occupied
-              ? `${t('seating.seatNumberLabel', { number: seat.seatNumber })} — ${displayName ?? ''}`
+              ? `${t('seating.seatNumberLabel', { number: seat.seatNumber })} — ${displayName ?? ''}${familyLabel ? `, ${familyLabel}` : ''}`
               : `${t('seating.seatNumberLabel', { number: seat.seatNumber })} ${t('seating.emptySeat')}`
           }
           sx={(theme) => ({
@@ -150,13 +169,9 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
               }
             }}
             sx={{
+              ...truncatedLabelSx,
               mt: 0.5,
-              maxWidth: NAME_W,
-              textAlign: 'center',
               fontWeight: 500,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
               cursor: onHoist && seat.householdInvitationId ? 'pointer' : 'default',
               '&:hover': onHoist && seat.householdInvitationId ? {
                 textDecoration: 'underline',
@@ -164,6 +179,22 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
             }}
           >
             {displayName}
+          </Typography>
+        </Tooltip>
+      ) : null}
+      {familyLabel ? (
+        <Tooltip title={familyLabel} enterDelay={400}>
+          <Typography
+            variant="caption"
+            sx={{
+              ...truncatedLabelSx,
+              mt: 0.25,
+              fontSize: 6,
+              lineHeight: 1.2,
+              color: 'text.secondary',
+            }}
+          >
+            {familyLabel}
           </Typography>
         </Tooltip>
       ) : null}
