@@ -2,14 +2,17 @@ import {
   BadRequestException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
 import { google } from 'googleapis';
 import { Invitation } from '../../entities/invitation.entity';
+import { Attendee } from '../../entities/attendee.entity';
 import { UserGoogleCredential } from '../../entities/user-google-credential.entity';
 import { Client } from '../../entities/client.entity';
 import { GoogleOauthService } from './google-oauth.service';
-import { parseRow, RawSheetRow } from './sheet-parser.util';
-import { classifyRows, SheetRowInput } from './reconcile.util';
+import {
+  ATTENDEES_COLUMN_HEADER, norm, parseRow, ParsedAttendee, RawSheetRow,
+} from './sheet-parser.util';
+import { classifyRows, reconcileAttendees, SheetRowInput } from './reconcile.util';
 
 // Default sheet tab when a client row leaves google_sheet_tab unset. The sheet
 // id is now per-client (Client.googleSheetId) and has no env fallback — a client
@@ -29,6 +32,9 @@ export interface SyncResult {
   skipped: number;
   unknownStatuses: number;
   demotedConfirmed: number;
+  // Attendees derived from the napomena/notes column (e.g. "igor mira doda ...").
+  attendeesCreated: number;
+  attendeesRemoved: number;
   errors: SyncRowError[];
 }
 
@@ -44,6 +50,7 @@ export class GoogleSyncService {
 
   constructor(
     @InjectRepository(Invitation) private readonly invitations: Repository<Invitation>,
+    @InjectRepository(Attendee) private readonly attendees: Repository<Attendee>,
     @InjectRepository(UserGoogleCredential) private readonly creds: Repository<UserGoogleCredential>,
     @InjectRepository(Client) private readonly clients: Repository<Client>,
     private readonly oauth: GoogleOauthService,
@@ -88,12 +95,13 @@ export class GoogleSyncService {
 
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // Pull A2:I to skip the header row. Returns string-valued cells.
+    // Pull A1:Z including the header row — the attendees column ('Zvanica u
+    // pratnji') is located by header name, not a fixed letter, so it can move.
     let values: unknown[][] = [];
     try {
       const resp = await sheets.spreadsheets.values.get({
         spreadsheetId: sheetId,
-        range: `${sheetTab}!A2:I`,
+        range: `${sheetTab}!A1:Z`,
         valueRenderOption: 'UNFORMATTED_VALUE',
         dateTimeRenderOption: 'FORMATTED_STRING',
       });
@@ -119,13 +127,25 @@ export class GoogleSyncService {
 
     const result: SyncResult = {
       inserted: 0, updated: 0, renamed: 0, skipped: 0,
-      unknownStatuses: 0, demotedConfirmed: 0, errors: [],
+      unknownStatuses: 0, demotedConfirmed: 0,
+      attendeesCreated: 0, attendeesRemoved: 0, errors: [],
     };
 
-    // Parse every sheet row first, tallying parse-level outcomes.
+    // Row 1 is the header. Locate the attendees column by (NFC-normalised,
+    // case-insensitive) header title; -1 if the sheet doesn't have it yet.
+    const header = (values[0] ?? []) as unknown[];
+    const wantedHeader = norm(ATTENDEES_COLUMN_HEADER).toLowerCase();
+    const companionIdx = header.findIndex((h) => norm(h).toLowerCase() === wantedHeader);
+    if (companionIdx < 0) {
+      this.logger.warn(
+        `Sheet '${sheetTab}' has no '${ATTENDEES_COLUMN_HEADER}' column; attendees will not be synced.`,
+      );
+    }
+
+    // Parse every data row (skip the header), tallying parse-level outcomes.
     const sheetRows: SheetRowInput[] = [];
-    for (let i = 0; i < values.length; i++) {
-      const rowNumber = i + 2;  // sheet rows are 1-indexed; data starts at row 2
+    for (let i = 1; i < values.length; i++) {
+      const rowNumber = i + 1;  // values[1] is sheet row 2 (1-indexed)
       const cells = values[i] ?? [];
 
       const raw: RawSheetRow = {
@@ -139,6 +159,7 @@ export class GoogleSyncService {
         forecast:      cells[6],
         responseDate:  cells[7],
         napomena:      cells[8],
+        companions:    companionIdx >= 0 ? cells[companionIdx] : undefined,
       };
       const parsed = parseRow(raw);
       if (parsed.kind === 'skip') {
@@ -160,14 +181,31 @@ export class GoogleSyncService {
       existing.map((e) => ({ id: e.id, guestLabel: e.guestLabel, createdAt: e.createdAt })),
     );
 
+    // Load every attendee for this client's invitations once, bucketed by
+    // invitation id, so per-row reconciliation (update/rename) is in-memory.
+    // attendee has no client_id — scope it through its parent invitation ids.
+    const existingAttendees = existing.length
+      ? await this.attendees.find({ where: { invitationId: In(existing.map((e) => e.id)) } })
+      : [];
+    const attByInvitation = new Map<string, Attendee[]>();
+    for (const a of existingAttendees) {
+      const list = attByInvitation.get(a.invitationId);
+      if (list) list.push(a);
+      else attByInvitation.set(a.invitationId, [a]);
+    }
+
     // Apply: each op is isolated so one bad row can't abort the whole sync.
     for (const ins of plan.inserts) {
       try {
+        // attendees is a derived child collection, not an invitation column —
+        // keep it out of the entity payload (the relation has cascade:false).
+        const { attendees, ...invRow } = ins.row;
         const entity = this.invitations.create({
-          ...ins.row, clientId, createdBy: userId, updatedBy: userId,
+          ...invRow, clientId, createdBy: userId, updatedBy: userId,
           sheetRow: ins.rowNumber,
         });
-        await this.invitations.save(entity);
+        const saved = await this.invitations.save(entity);
+        await this.syncAttendees(saved.id, attendees, [], result);
         result.inserted++;
       } catch (err) {
         result.errors.push({
@@ -178,10 +216,12 @@ export class GoogleSyncService {
     for (const upd of plan.updates) {
       try {
         const entity = byId.get(upd.id)!;
+        const { attendees, ...invRow } = upd.row;
         // Re-stamp sheet_row each sync: a guest who moved up/down in the sheet
         // (or whose row was previously NULL) tracks its current position.
-        Object.assign(entity, upd.row, { updatedBy: userId, sheetRow: upd.rowNumber });
+        Object.assign(entity, invRow, { updatedBy: userId, sheetRow: upd.rowNumber });
         await this.invitations.save(entity);
+        await this.syncAttendees(upd.id, attendees, attByInvitation.get(upd.id) ?? [], result);
         result.updated++;
       } catch (err) {
         result.errors.push({
@@ -192,9 +232,11 @@ export class GoogleSyncService {
     for (const ren of plan.renames) {
       try {
         const entity = byId.get(ren.id)!;
+        const { attendees, ...invRow } = ren.row;
         // A renamed guest follows its new sheet position too.
-        Object.assign(entity, ren.row, { updatedBy: userId, sheetRow: ren.rowNumber });
+        Object.assign(entity, invRow, { updatedBy: userId, sheetRow: ren.rowNumber });
         await this.invitations.save(entity);
+        await this.syncAttendees(ren.id, attendees, attByInvitation.get(ren.id) ?? [], result);
         result.renamed++;
       } catch (err) {
         result.errors.push({
@@ -204,6 +246,41 @@ export class GoogleSyncService {
     }
 
     return result;
+  }
+
+  /**
+   * Reconcile one invitation's attendees against the names parsed from its note.
+   * Matches by name so unchanged attendees keep their id (and thus their seat —
+   * see reconcileAttendees). Each op runs within the caller's per-row try/catch.
+   */
+  private async syncAttendees(
+    invitationId: string,
+    desired: ParsedAttendee[],
+    existing: Attendee[],
+    result: SyncResult,
+  ): Promise<void> {
+    const recon = reconcileAttendees(
+      existing.map((a) => ({ id: a.id, fullName: a.fullName, isChild: a.isChild })),
+      desired,
+    );
+
+    if (recon.toInsert.length > 0) {
+      await this.attendees.save(
+        recon.toInsert.map((a) => this.attendees.create({
+          invitationId, fullName: a.fullName, isChild: a.isChild,
+        })),
+      );
+      result.attendeesCreated += recon.toInsert.length;
+    }
+    for (const u of recon.toUpdate) {
+      await this.attendees.update({ id: u.id }, { isChild: u.isChild });
+    }
+    if (recon.toDeleteIds.length > 0) {
+      // seat.attendee_id is ON DELETE SET NULL — removing a dropped guest frees
+      // any seat they held, which is the correct outcome (they're not coming).
+      await this.attendees.delete(recon.toDeleteIds);
+      result.attendeesRemoved += recon.toDeleteIds.length;
+    }
   }
 }
 

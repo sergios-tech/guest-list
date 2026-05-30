@@ -3,7 +3,7 @@
 // (optionally) unit-tested in isolation. See
 // docs/superpowers/specs/2026-05-29-sheet-sync-rename-matching-design.md.
 
-import { ParsedRow } from './sheet-parser.util';
+import { ParsedAttendee, ParsedRow } from './sheet-parser.util';
 
 // One parsed sheet row plus its 1-indexed sheet row number (used only for
 // per-row error reporting in the apply loop).
@@ -79,6 +79,76 @@ export function nameSimilarity(a: string, b: string): number {
  * Leftover sheet rows -> inserts. Leftover invitations -> orphans (NOT deleted
  * here; deletion is task #2).
  */
+// ---------------------------------------------------------------------------
+// Attendee reconciliation
+// ---------------------------------------------------------------------------
+
+// The slice of an existing attendee row the diff needs. Entity-free so this
+// stays pure and unit-testable alongside classifyRows.
+export interface DbAttendeeRef {
+  id: string;
+  fullName: string;
+  isChild: boolean;
+}
+
+export interface AttendeeReconcilePlan {
+  toInsert: ParsedAttendee[];
+  toUpdate: Array<{ id: string; isChild: boolean }>;
+  toDeleteIds: string[];
+}
+
+// Match key: NFC + lowercase + collapse internal whitespace. Names are matched
+// case-insensitively so "Igor" in a seated DB row keeps its id when the sheet
+// later writes "igor".
+function attendeeKey(name: string): string {
+  return (name ?? '').normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Diff a sheet-derived attendee roster against what's already stored for an
+ * invitation, matching by normalized name.
+ *
+ * Why name-based and not delete-all-then-reinsert: `seat.attendee_id` is
+ * `ON DELETE SET NULL` (db/01_schema.sql:253). Recreating every attendee with a
+ * fresh UUID on each sync would silently unseat everyone in the seating plan.
+ * Keeping the id of an unchanged name preserves its seat; only genuinely-removed
+ * names are deleted (correctly freeing their seat). "Sheet wins", minimally.
+ *
+ * Duplicate identical names are matched positionally (oldest list order wins),
+ * so two "Marko"s stay two rows rather than collapsing.
+ */
+export function reconcileAttendees(
+  existing: DbAttendeeRef[],
+  desired: ParsedAttendee[],
+): AttendeeReconcilePlan {
+  const plan: AttendeeReconcilePlan = { toInsert: [], toUpdate: [], toDeleteIds: [] };
+
+  const byName = new Map<string, DbAttendeeRef[]>();
+  for (const a of existing) {
+    const key = attendeeKey(a.fullName);
+    const list = byName.get(key);
+    if (list) list.push(a);
+    else byName.set(key, [a]);
+  }
+
+  for (const d of desired) {
+    const queue = byName.get(attendeeKey(d.fullName));
+    const match = queue && queue.length > 0 ? queue.shift() : undefined;
+    if (match) {
+      if (match.isChild !== d.isChild) plan.toUpdate.push({ id: match.id, isChild: d.isChild });
+    } else {
+      plan.toInsert.push(d);
+    }
+  }
+
+  // Anything left unmatched is gone from the sheet -> delete (frees its seat).
+  for (const list of byName.values()) {
+    for (const a of list) plan.toDeleteIds.push(a.id);
+  }
+
+  return plan;
+}
+
 export function classifyRows(
   sheetRows: SheetRowInput[],
   dbInvitations: DbInvitationRef[],

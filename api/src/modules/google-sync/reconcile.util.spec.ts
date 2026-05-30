@@ -16,6 +16,7 @@ function sheetRow(rowNumber: number, guestLabel: string): SheetRowInput {
       accommodation: AccommodationType.None,
       declineReason: null,
       notes: null,
+      attendees: [],
     },
   };
 }

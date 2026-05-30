@@ -34,9 +34,41 @@ const ACCOM_PATTERNS: Array<[RegExp, AccommodationType]> = [
   [/\baria\b/i,                                               AccommodationType.Aria],
 ];
 
+// Canonical header title of the dedicated attendees column in the source sheet.
+// Lookup is by header NAME (not a fixed column letter) so the column can move.
+// Compare with norm()+lowercase against this. Keep aligned with generate_seed.py.
+export const ATTENDEES_COLUMN_HEADER = 'Zvanica u pratnji';
+
 export interface AccommodationExtract {
   accommodation: AccommodationType;
   remaining: string;
+}
+
+export interface ParsedAttendee {
+  fullName: string;
+  isChild: boolean;
+}
+
+/**
+ * Parse the dedicated 'Zvanica u pratnji' (companions) column into attendees.
+ *
+ * The cell is a COMMA-delimited list of full names — a single name may itself
+ * contain spaces ("Baba Ljubica"), so we split ONLY on commas, never whitespace.
+ * Examples: "Baba Ljubica" -> 1, "Neda, Duda, Ivana, Peka, Vlada" -> 5.
+ *
+ * Child assignment follows the sheet convention (adults listed first, children
+ * last): the trailing `children`-count names are marked is_child. Keep aligned
+ * with generate_seed.py:parse_companions.
+ */
+export function parseCompanions(value: string, children: number | null): ParsedAttendee[] {
+  if (!value) return [];
+  const names = value.split(',').map((n) => n.trim()).filter((n) => n.length > 0);
+  if (names.length === 0) return [];
+  const nChildren = children ?? 0;
+  return names.map((fullName, idx) => ({
+    fullName,
+    isChild: nChildren > 0 && idx >= names.length - nChildren,
+  }));
 }
 
 export function extractAccommodation(note: string): AccommodationExtract {
@@ -92,6 +124,9 @@ export interface RawSheetRow {
   forecast: unknown;             // G
   responseDate: unknown;         // H
   napomena: unknown;             // I
+  // Dedicated attendees column ('Zvanica u pratnji'), located by header name
+  // (not a fixed letter). Undefined when the sheet has no such column.
+  companions?: unknown;
 }
 
 export interface ParsedRow {
@@ -105,6 +140,7 @@ export interface ParsedRow {
   accommodation: AccommodationType;
   declineReason: string | null;
   notes: string | null;
+  attendees: ParsedAttendee[];
 }
 
 export type ParseResult =
@@ -161,6 +197,12 @@ export function parseRow(raw: RawSheetRow): ParseResult {
     children = 0;
   }
 
+  // Attendees come from the dedicated 'Zvanica u pratnji' column, NOT from the
+  // note. Declined guests aren't attending, so they get no attendees.
+  const attendees: ParsedAttendee[] = status === RsvpStatus.Declined
+    ? []
+    : parseCompanions(norm(raw.companions), childrenRaw);
+
   return {
     kind: 'parsed',
     row: {
@@ -174,6 +216,7 @@ export function parseRow(raw: RawSheetRow): ParseResult {
       accommodation,
       declineReason,
       notes,
+      attendees,
     },
     demoted,
     unknownStatus,

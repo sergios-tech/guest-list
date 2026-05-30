@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Invitation } from '../../entities/invitation.entity';
+import { Attendee } from '../../entities/attendee.entity';
 import { UserGoogleCredential } from '../../entities/user-google-credential.entity';
 import { Client } from '../../entities/client.entity';
 import { UserClient } from '../../entities/user-client.entity';
@@ -11,7 +12,7 @@ import { GoogleSyncService } from './google-sync.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Invitation, UserGoogleCredential, Client, UserClient]),
+    TypeOrmModule.forFeature([Invitation, Attendee, UserGoogleCredential, Client, UserClient]),
   ],
   controllers: [GoogleSyncController],
   providers: [GoogleOauthService, GoogleSyncService, ClientContextGuard],
