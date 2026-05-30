@@ -2,7 +2,7 @@ import {
   BadRequestException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import { google } from 'googleapis';
 import { Invitation } from '../../entities/invitation.entity';
 import { Attendee } from '../../entities/attendee.entity';
@@ -35,6 +35,8 @@ export interface SyncResult {
   // Attendees derived from the napomena/notes column (e.g. "igor mira doda ...").
   attendeesCreated: number;
   attendeesRemoved: number;
+  // Invitations deleted in clean mode before re-import; 0 in continue mode.
+  deleted: number;
   errors: SyncRowError[];
 }
 
@@ -54,6 +56,7 @@ export class GoogleSyncService {
     @InjectRepository(UserGoogleCredential) private readonly creds: Repository<UserGoogleCredential>,
     @InjectRepository(Client) private readonly clients: Repository<Client>,
     private readonly oauth: GoogleOauthService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getStatus(userId: string): Promise<ConnectionStatus> {
@@ -70,7 +73,11 @@ export class GoogleSyncService {
     await this.oauth.disconnect(userId);
   }
 
-  async run(userId: string, clientId: string): Promise<SyncResult> {
+  async run(
+    userId: string,
+    clientId: string,
+    mode: 'continue' | 'clean' = 'continue',
+  ): Promise<SyncResult> {
     // Sheet config is per-client (was previously global env vars). Resolve the
     // current tenant's sheet id/tab before touching Google.
     const client = await this.clients.findOne({ where: { id: clientId } });
@@ -128,7 +135,7 @@ export class GoogleSyncService {
     const result: SyncResult = {
       inserted: 0, updated: 0, renamed: 0, skipped: 0,
       unknownStatuses: 0, demotedConfirmed: 0,
-      attendeesCreated: 0, attendeesRemoved: 0, errors: [],
+      attendeesCreated: 0, attendeesRemoved: 0, deleted: 0, errors: [],
     };
 
     // Row 1 is the header. Locate the attendees column by (NFC-normalised,
@@ -169,6 +176,44 @@ export class GoogleSyncService {
       if (parsed.unknownStatus) result.unknownStatuses++;
       if (parsed.demoted) result.demotedConfirmed++;
       sheetRows.push({ rowNumber, row: parsed.row });
+    }
+
+    if (mode === 'clean') {
+      // Destructive re-import: drop this client's invitations, then insert every
+      // parsed row fresh. FK rules do the child cleanup — attendee.invitation_id
+      // is ON DELETE CASCADE, seat.invitation_id/attendee_id are ON DELETE SET
+      // NULL (seating plans/tables survive, their seats are freed). Wrapped in a
+      // transaction so a hard failure rolls back and the old data is preserved;
+      // per-row CHECK violations are still collected as soft errors.
+      await this.dataSource.transaction(async (mgr) => {
+        const del = await mgr.delete(Invitation, { clientId });
+        result.deleted = del.affected ?? 0;
+
+        for (const sr of sheetRows) {
+          try {
+            const { attendees, ...invRow } = sr.row;
+            const entity = mgr.create(Invitation, {
+              ...invRow, clientId, createdBy: userId, updatedBy: userId,
+              sheetRow: sr.rowNumber,
+            });
+            const saved = await mgr.save(entity);
+            if (attendees.length > 0) {
+              await mgr.save(
+                attendees.map((a) => mgr.create(Attendee, {
+                  invitationId: saved.id, fullName: a.fullName, isChild: a.isChild,
+                })),
+              );
+              result.attendeesCreated += attendees.length;
+            }
+            result.inserted++;
+          } catch (err) {
+            result.errors.push({
+              rowNumber: sr.rowNumber, guestLabel: sr.row.guestLabel, message: formatRowError(err),
+            });
+          }
+        }
+      });
+      return result;
     }
 
     // Load every invitation for this client once, then classify in memory.

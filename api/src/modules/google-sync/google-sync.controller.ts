@@ -1,12 +1,22 @@
 import {
-  BadRequestException, Controller, Delete, Get, Post,
+  BadRequestException, Body, Controller, Delete, Get, Post,
   Query, Req, Res, UseGuards,
 } from '@nestjs/common';
+import { IsIn, IsOptional } from 'class-validator';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard, Roles, RolesGuard } from '../auth/jwt-auth.guard';
 import { ClientContextGuard, CurrentClientId } from '../auth/client-context.guard';
 import { GoogleOauthService } from './google-oauth.service';
 import { GoogleSyncService } from './google-sync.service';
+
+// 'continue' = current "sheet wins" upsert; 'clean' = delete this client's
+// invitations first, then re-import. Validated because main.ts runs
+// ValidationPipe({ forbidNonWhitelisted: true }) — an unknown field 400s.
+class RunSyncDto {
+  @IsOptional()
+  @IsIn(['continue', 'clean'])
+  mode?: 'continue' | 'clean';
+}
 
 // Guards are applied per-handler instead of at the class level because the
 // `oauth/callback` endpoint MUST be public: Google redirects the browser there
@@ -69,9 +79,13 @@ export class GoogleSyncController {
   @Post('run')
   @UseGuards(JwtAuthGuard, ClientContextGuard, RolesGuard)
   @Roles('OWNER', 'EDITOR')
-  async run(@Req() req: Request, @CurrentClientId() clientId: string) {
+  async run(
+    @Req() req: Request,
+    @CurrentClientId() clientId: string,
+    @Body() body: RunSyncDto,
+  ) {
     const userId = (req.user as any)?.id;
     if (!userId) throw new BadRequestException('Missing user');
-    return this.sync.run(userId, clientId);
+    return this.sync.run(userId, clientId, body.mode ?? 'continue');
   }
 }
