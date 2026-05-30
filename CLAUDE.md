@@ -55,6 +55,19 @@ The Vite dev proxy makes nginx optional for local work. Both services default to
 
 There are none. The README flags this explicitly: add Jest for the API and Vitest + Testing Library for the web if asked. Don't fabricate test scripts that don't exist.
 
+### STRICT: always run the full typecheck and build for both API and web
+
+Before claiming any change is done, committing, opening a PR, or merging, **run the full typecheck and build for BOTH the API and the web** — never just the package you edited, and never just `tsc --noEmit` without the real build:
+
+```bash
+cd api && npx tsc --noEmit && npm run build       # nest build
+cd web && npm run build                           # tsc -b && vite build
+```
+
+Both must exit 0. With no test suite, this is the **only** automated correctness gate, and CI deploys with `docker compose up -d --build` (which runs `nest build`) — a type error reaches prod as a failed deploy, not a caught test.
+
+This is not optional even for "small" or single-file edits. A change can compile in isolation and still break the build through a cross-file contract: e.g. editing a service signature (multi-tenancy added `clientId`/`userId` to `InvitationsService`) breaks every controller that calls it, and a file-scoped diff looks clean while `main` no longer compiles. **Build the whole tree, both apps, every time.**
+
 ## Architecture
 
 ### Database is the source of truth, not TypeORM
