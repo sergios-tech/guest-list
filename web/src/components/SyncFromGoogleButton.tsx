@@ -113,31 +113,26 @@ export default function SyncFromGoogleButton() {
       qc.invalidateQueries({ queryKey: ['stats'] });
       qc.invalidateQueries({ queryKey: qk.statsOverview(currentClientId!) });
       closeDialog();
-      if (data.errors.length > 0) {
-        snackbar.show(
-          t(mode === 'clean' ? 'sync.completedCleanWithErrors' : 'sync.completedWithErrors', {
-            deleted: data.deleted,
-            inserted: data.inserted,
-            updated: data.updated,
-            renamed: data.renamed,
-            attendees: data.attendeesCreated,
-            errorCount: data.errors.length,
-          }),
-          'warning',
-        );
-        setErrorDetail(data.errors);
-      } else {
-        snackbar.show(
-          t(mode === 'clean' ? 'sync.completedClean' : 'sync.completed', {
-            deleted: data.deleted,
-            inserted: data.inserted,
-            updated: data.updated,
-            renamed: data.renamed,
-            attendees: data.attendeesCreated,
-          }),
-          'success',
-        );
-      }
+      // One interpolation payload for every variant; the with-errors strings add
+      // errorCount. (Clean reports renamed + attendeesRemoved; continue never
+      // deletes, so those read 0 there.)
+      const vars = {
+        deleted: data.deleted,
+        inserted: data.inserted,
+        updated: data.updated,
+        renamed: data.renamed,
+        attendees: data.attendeesCreated,
+        attendeesRemoved: data.attendeesRemoved,
+      };
+      const withErrors = data.errors.length > 0;
+      const key = mode === 'clean'
+        ? (withErrors ? 'sync.completedCleanWithErrors' : 'sync.completedClean')
+        : (withErrors ? 'sync.completedWithErrors' : 'sync.completed');
+      snackbar.show(
+        t(key, withErrors ? { ...vars, errorCount: data.errors.length } : vars),
+        withErrors ? 'warning' : 'success',
+      );
+      if (withErrors) setErrorDetail(data.errors);
     },
     onError: (err) => snackbar.show(apiErrorMessage(err, t), 'error'),
   });
