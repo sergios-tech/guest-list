@@ -77,8 +77,9 @@ become report rows for manual placement instead.
 - attendees (different nicknames / not present in Siesta): `Aca→Aco?`, `baba rada→Baba?`,
   `Tetka Jelena→Jelena?`, `Neša→Nešo?`, `Boban` (none), `FIlip` (none).
 - **Overflow seat:** source table 2 has 11 seats (seat 11 is an invite-slot assignment);
-  target table 2 has only 10. Seat 11 has no destination → reported as unplaceable.
-  *Open option:* expand target table 2 to 11 seats so this guest is placed too (see below).
+  target table 2 has only 10. **Decided:** the script expands target table 2 to 11 seats
+  (bump `seat_count` to 11, insert seat 11) so this guest is placed automatically and the
+  layout mirrors `proba 1` exactly.
 
 Net: ~98–99 of 108 assignments land automatically; ~9–10 are reported for a quick manual
 pass in the seating UI.
@@ -101,11 +102,14 @@ such data). The `oneoff/` subfolder keeps it out of the schema-migration lineage
 2. **Reset target (idempotency).** Clear all assignments in the target plan
    (`attendee_id = invitation_id = slot_index = NULL` for `plan_id = target`). This makes
    re-runs converge to the same state.
-3. **Copy labels** from source tables to target tables by `table_number`.
-4. **Resolve + assign** invite-slot seats (Tier 1 then Tier 2), then attendee seats
+3. **Expand target table 2 to 11 seats (idempotent).** If target table 2 has < 11 seats,
+   set its `seat_count = 11` and `INSERT ... ON CONFLICT (table_id, seat_number) DO NOTHING`
+   a seat 11. Re-runs are no-ops.
+4. **Copy labels** from source tables to target tables by `table_number`.
+5. **Resolve + assign** invite-slot seats (Tier 1 then Tier 2), then attendee seats
    (Tier 1 then family-scoped Tier 2), updating the target seat at the matching
    `(table_number, seat_number)`. Resolution CTEs reject non-unique matches.
-5. **Report.** Final `SELECT` of every source assignment that was **not** placed (reason:
+6. **Report.** Final `SELECT` of every source assignment that was **not** placed (reason:
    no match / ambiguous / no target seat), so the user gets an exact manual-placement list.
 
 DB constraints relied on: `ux_seat_unique_attendee` and `ux_seat_unique_slot` are per-plan
@@ -133,7 +137,7 @@ spot-check. (The repo's typecheck/build gate does not apply — no app code chan
 - No new seating plan; the existing `Sala Siesta` plan is filled in place.
 - No schema change; no `01_schema.sql` edit; no entity changes.
 
-## Open decision for the user
+## Decisions (resolved)
 
-- **Table-2 overflow seat:** leave it reported-only (default), **or** expand target table 2
-  to 11 seats inside the script so that guest is placed automatically too?
+- **Table-2 overflow seat:** expand target table 2 to 11 seats inside the script so the
+  guest is placed automatically (layout mirrors `proba 1`).
