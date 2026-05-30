@@ -63,6 +63,12 @@ export class Invitation {
   @Column({ type: 'text', nullable: true })
   notes?: string | null;
 
+  // Original Google Sheet row number (1-indexed), set on sync. Drives the
+  // default list order so the grid mirrors the spreadsheet. NULL for rows
+  // created manually in the app — those sort last (see InvitationsService.list).
+  @Column({ name: 'sheet_row', type: 'smallint', nullable: true })
+  sheetRow?: number | null;
+
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy?: string | null;
 

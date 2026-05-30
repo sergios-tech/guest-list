@@ -66,8 +66,8 @@ export class InvitationsService {
     @InjectRepository(Invitation) private readonly repo: Repository<Invitation>,
   ) {}
 
-  list(query: ListInvitationsQueryDto) {
-    const where: any = {};
+  list(query: ListInvitationsQueryDto, clientId: string) {
+    const where: any = { clientId };
     if (query.status) where.status = query.status;
     if (query.accommodation) where.accommodation = query.accommodation;
     if (query.q) {
@@ -76,40 +76,52 @@ export class InvitationsService {
     }
     // No `relations: ['attendees']` — the grid never reads them and a 150-row
     // wedding with ~4 attendees each tripled the payload.
+    //
+    // Order mirrors the source Google Sheet: sheet_row ASC reproduces the
+    // spreadsheet's top-to-bottom order. NULLS LAST parks manually-created
+    // invitations (no sheet row) at the bottom, where created_at ASC keeps them
+    // in the order they were added; guest_label is the final stable tiebreak.
     return this.repo.find({
       where,
-      order: { guestLabel: 'ASC' },
+      order: {
+        sheetRow: { direction: 'ASC', nulls: 'LAST' },
+        createdAt: 'ASC',
+        guestLabel: 'ASC',
+      },
       take: Math.min(query.limit ?? DEFAULT_LIMIT, MAX_LIMIT),
       skip: query.offset ?? 0,
     });
   }
 
-  async findOne(id: string) {
+  // Scoped by clientId in the WHERE clause: a guessed id from another tenant
+  // returns 404 (no cross-tenant existence leak), matching AttendeesService.
+  async findOne(id: string, clientId: string) {
     const inv = await this.repo.findOne({
-      where: { id },
+      where: { id, clientId },
       relations: ['attendees'],
     });
     if (!inv) throw new NotFoundException(`Invitation ${id} not found`);
     return inv;
   }
 
-  async create(dto: CreateInvitationDto, userId: string) {
+  async create(dto: CreateInvitationDto, clientId: string, userId: string) {
     const entity = this.repo.create({
       ...dto,
+      clientId,
       createdBy: userId,
       updatedBy: userId,
     });
     try {
       const saved = await this.repo.save(entity);
       // Refetch so generated `confirmed_total` reflects the new adults+children.
-      return this.findOne(saved.id);
+      return this.findOne(saved.id, clientId);
     } catch (err) {
       rethrowDbError(err);
     }
   }
 
-  async update(id: string, dto: UpdateInvitationDto, userId: string) {
-    const inv = await this.findOne(id);
+  async update(id: string, dto: UpdateInvitationDto, clientId: string, userId: string) {
+    const inv = await this.findOne(id, clientId);
     const { version, ...patch } = dto;
     if (version !== undefined) inv.version = version;
     Object.assign(inv, patch, { updatedBy: userId });
@@ -126,11 +138,11 @@ export class InvitationsService {
     }
     // Refetch so generated `confirmed_total` (Postgres-computed) is current
     // and the bumped @VersionColumn is reflected in the response.
-    return this.findOne(id);
+    return this.findOne(id, clientId);
   }
 
-  async remove(id: string) {
-    const inv = await this.findOne(id);
+  async remove(id: string, clientId: string) {
+    const inv = await this.findOne(id, clientId);
     await this.repo.remove(inv);
     return { id, deleted: true };
   }

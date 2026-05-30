@@ -227,7 +227,7 @@ ON CONFLICT (user_id, client_id) DO NOTHING;
             f"({inv_id}, {client_id}, {sql_str(gost)}, {sql_int(planirano)}, '{status}', "
             f"{odrasli_sql}, {deca_sql}, {sql_int(prognoza)}, "
             f"{sql_date(datum)}, '{accom}', {sql_str(decline_reason)}, "
-            f"{sql_str(final_notes)}, {owner_id}, {owner_id})"
+            f"{sql_str(final_notes)}, {r}, {owner_id}, {owner_id})"
         )
 
         # Heuristic: how many attendees are children?
@@ -242,7 +242,7 @@ ON CONFLICT (user_id, client_id) DO NOTHING;
     statements.append("INSERT INTO invitation "
         "(id, client_id, guest_label, planned_count, status, adults, children, "
         "forecast, response_date, accommodation, decline_reason, notes, "
-        "created_by, updated_by) VALUES")
+        "sheet_row, created_by, updated_by) VALUES")
     statements.append(",\n".join(inv_rows) + ";")
 
     if attendee_rows:

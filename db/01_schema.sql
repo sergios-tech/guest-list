@@ -116,6 +116,11 @@ CREATE TABLE invitation (
   accommodation    accommodation_type NOT NULL DEFAULT 'NONE',
   decline_reason   text,
   notes            text,
+  -- Original Google Sheet row number (1-indexed), captured on sync so the
+  -- invitations list can reproduce the spreadsheet's row order instead of
+  -- sorting alphabetically. NULL for invitations created manually in the app
+  -- (they sort after all synced rows — see InvitationsService.list).
+  sheet_row        smallint,
   created_by       uuid REFERENCES app_user(id) ON DELETE SET NULL,
   updated_by       uuid REFERENCES app_user(id) ON DELETE SET NULL,
   created_at       timestamptz NOT NULL DEFAULT now(),
@@ -136,6 +141,9 @@ CREATE INDEX ix_invitation_accommodation ON invitation(accommodation)
   WHERE accommodation <> 'NONE';
 CREATE INDEX ix_invitation_guest_label_trgm
   ON invitation USING gin (guest_label gin_trgm_ops);
+-- Backs the default per-client list ordering (ORDER BY sheet_row NULLS LAST).
+CREATE INDEX ix_invitation_client_sheet_row
+  ON invitation(client_id, sheet_row);
 
 ------------------------------------------------------------------
 -- attendees (named individuals within an invitation)
