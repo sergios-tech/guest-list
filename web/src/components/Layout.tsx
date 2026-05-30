@@ -1,8 +1,8 @@
-import { ReactNode, useState } from 'react';
+import { Fragment, ReactNode, useMemo, useState } from 'react';
 import {
   AppBar, Toolbar, IconButton, Typography, Box, Drawer, List,
   ListItemButton, ListItemIcon, ListItemText, useMediaQuery,
-  Select, MenuItem, Button,
+  Select, MenuItem, Button, Tooltip,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -14,54 +14,110 @@ import { useTheme } from '@mui/material/styles';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../lib/auth';
+import logoUrl from '../assets/Sergio_s_Tech_Logo_Official_Vector.svg';
 
 const DRAWER_WIDTH = 240;
+const DRAWER_WIDTH_COLLAPSED = 64;
+const NAV_COLLAPSED_KEY = 'nav.collapsed';
 
 export default function Layout({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Desktop-only collapse state, persisted across reloads. Default expanded
+  // (absent key → not 'true' → false).
+  const [collapsed, setCollapsed] = useState<boolean>(
+    () => localStorage.getItem(NAV_COLLAPSED_KEY) === 'true',
+  );
   const { t, i18n } = useTranslation();
   const { logout, clients, currentClientId, switchClient, user } = useAuth();
   const loc = useLocation();
 
+  // The mobile overlay always shows full labels; only the permanent desktop
+  // drawer collapses to icons-only.
+  const showLabels = isMobile || !collapsed;
+  const drawerWidth = showLabels ? DRAWER_WIDTH : DRAWER_WIDTH_COLLAPSED;
+
+  // One control drives both modes: on mobile it opens the temporary overlay,
+  // on desktop it collapses/expands the permanent drawer. The collapse choice
+  // is persisted here (only on a real toggle) rather than in an effect that
+  // would redundantly re-write the same value on every mount.
+  const handleNavToggle = () => {
+    if (isMobile) {
+      setMobileOpen((v) => !v);
+      return;
+    }
+    setCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem(NAV_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  };
+
+  // Recomputed only when the route, language, or admin status actually changes
+  // — not on every collapse/overlay toggle.
+  const navItems = useMemo(
+    () => [
+      { to: '/', icon: <DashboardIcon />, label: t('nav.dashboard'), selected: loc.pathname === '/' },
+      {
+        to: '/invitations', icon: <PeopleIcon />, label: t('nav.invitations'),
+        selected: loc.pathname.startsWith('/invitations'),
+      },
+      {
+        to: '/seating', icon: <TableRestaurantIcon />, label: t('nav.seating'),
+        selected: loc.pathname.startsWith('/seating'),
+      },
+      ...(user?.isSuperAdmin
+        ? [{
+            to: '/admin/clients', icon: <BusinessIcon />, label: t('nav.admin'),
+            selected: loc.pathname.startsWith('/admin'),
+          }]
+        : []),
+    ],
+    [t, loc.pathname, user?.isSuperAdmin],
+  );
+
+  const year = new Date().getFullYear();
   const drawer = (
-    <Box role="navigation" sx={{ pt: 1 }}>
-      <List>
-        <ListItemButton
-          component={Link} to="/" selected={loc.pathname === '/'}
-          onClick={() => setMobileOpen(false)}
-        >
-          <ListItemIcon><DashboardIcon /></ListItemIcon>
-          <ListItemText primary={t('nav.dashboard')} />
-        </ListItemButton>
-        <ListItemButton
-          component={Link} to="/invitations"
-          selected={loc.pathname.startsWith('/invitations')}
-          onClick={() => setMobileOpen(false)}
-        >
-          <ListItemIcon><PeopleIcon /></ListItemIcon>
-          <ListItemText primary={t('nav.invitations')} />
-        </ListItemButton>
-        <ListItemButton
-          component={Link} to="/seating"
-          selected={loc.pathname.startsWith('/seating')}
-          onClick={() => setMobileOpen(false)}
-        >
-          <ListItemIcon><TableRestaurantIcon /></ListItemIcon>
-          <ListItemText primary={t('nav.seating')} />
-        </ListItemButton>
-        {user?.isSuperAdmin && (
-          <ListItemButton
-            component={Link} to="/admin/clients"
-            selected={loc.pathname.startsWith('/admin')}
-            onClick={() => setMobileOpen(false)}
-          >
-            <ListItemIcon><BusinessIcon /></ListItemIcon>
-            <ListItemText primary={t('nav.admin')} />
-          </ListItemButton>
-        )}
+    <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* component="nav" makes the link list the navigation landmark — the
+          copyright footer below is intentionally outside it. */}
+      <List component="nav" aria-label={t('app.menu')}>
+        {navItems.map((item) => {
+          const button = (
+            <ListItemButton
+              component={Link} to={item.to} selected={item.selected}
+              onClick={() => setMobileOpen(false)}
+              sx={{ justifyContent: showLabels ? 'initial' : 'center', px: 2.5 }}
+            >
+              <ListItemIcon
+                sx={{ minWidth: 0, mr: showLabels ? 3 : 'auto', justifyContent: 'center' }}
+              >
+                {item.icon}
+              </ListItemIcon>
+              {showLabels && <ListItemText primary={item.label} />}
+            </ListItemButton>
+          );
+          // Only wrap with a Tooltip when collapsed: when expanded the visible
+          // label is the accessible name, whereas a Tooltip would stamp an
+          // (empty) aria-label onto the link and clobber it.
+          return showLabels ? (
+            <Fragment key={item.to}>{button}</Fragment>
+          ) : (
+            <Tooltip key={item.to} title={item.label} placement="right">
+              {button}
+            </Tooltip>
+          );
+        })}
       </List>
+      {/* mt: auto pins the footer to the bottom of the flex column. */}
+      <Typography
+        variant="caption"
+        align="center"
+        sx={{ mt: 'auto', py: 2, px: 1, color: 'text.secondary' }}
+      >
+        {showLabels ? `© ${year} Sergio's Tech - All rights reserved` : `© ${year}`}
+      </Typography>
     </Box>
   );
 
@@ -72,16 +128,27 @@ export default function Layout({ children }: { children: ReactNode }) {
         sx={{ zIndex: theme.zIndex.drawer + 1 }}
       >
         <Toolbar>
-          {isMobile && (
-            <IconButton
-              color="inherit" edge="start"
-              onClick={() => setMobileOpen((v) => !v)}
-              sx={{ mr: 2 }}
-              aria-label={t('app.menu')}
-            >
-              <MenuIcon />
-            </IconButton>
-          )}
+          <IconButton
+            color="inherit" edge="start"
+            onClick={handleNavToggle}
+            sx={{ mr: 2 }}
+            aria-label={
+              isMobile
+                ? t('app.menu')
+                : collapsed
+                  ? t('nav.expandSidebar')
+                  : t('nav.collapseSidebar')
+            }
+            aria-expanded={isMobile ? mobileOpen : !collapsed}
+          >
+            <MenuIcon />
+          </IconButton>
+          <Box
+            component="img"
+            src={logoUrl}
+            alt=""
+            sx={{ height: 32, width: 'auto', mr: 1.5, display: 'block' }}
+          />
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             {t('app.title')}
           </Typography>
@@ -158,9 +225,19 @@ export default function Layout({ children }: { children: ReactNode }) {
         onClose={() => setMobileOpen(false)}
         ModalProps={{ keepMounted: true }}
         sx={{
-          width: DRAWER_WIDTH, flexShrink: 0,
+          width: drawerWidth, flexShrink: 0,
+          whiteSpace: 'nowrap',
           '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH, boxSizing: 'border-box', pt: 8,
+            width: drawerWidth, boxSizing: 'border-box', pt: 8,
+            overflowX: 'hidden',
+            // Only the permanent desktop drawer changes width; animating the
+            // mobile temporary overlay's width would make it grow on open.
+            ...(!isMobile && {
+              transition: theme.transitions.create('width', {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.enteringScreen,
+              }),
+            }),
           },
         }}
       >

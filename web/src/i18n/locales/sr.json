@@ -11,7 +11,9 @@
     "addInvitation": "Dodaj pozivnicu",
     "seating": "Raspored stolova",
     "admin": "Admin",
-    "selectClient": "Izaberi klijenta"
+    "selectClient": "Izaberi klijenta",
+    "collapseSidebar": "Skupi meni",
+    "expandSidebar": "Proširi meni"
   },
   "login": {
     "title": "Prijava",
