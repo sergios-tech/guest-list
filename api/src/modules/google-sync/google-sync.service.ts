@@ -165,6 +165,7 @@ export class GoogleSyncService {
       try {
         const entity = this.invitations.create({
           ...ins.row, clientId, createdBy: userId, updatedBy: userId,
+          sheetRow: ins.rowNumber,
         });
         await this.invitations.save(entity);
         result.inserted++;
@@ -177,7 +178,9 @@ export class GoogleSyncService {
     for (const upd of plan.updates) {
       try {
         const entity = byId.get(upd.id)!;
-        Object.assign(entity, upd.row, { updatedBy: userId });
+        // Re-stamp sheet_row each sync: a guest who moved up/down in the sheet
+        // (or whose row was previously NULL) tracks its current position.
+        Object.assign(entity, upd.row, { updatedBy: userId, sheetRow: upd.rowNumber });
         await this.invitations.save(entity);
         result.updated++;
       } catch (err) {
@@ -189,7 +192,8 @@ export class GoogleSyncService {
     for (const ren of plan.renames) {
       try {
         const entity = byId.get(ren.id)!;
-        Object.assign(entity, ren.row, { updatedBy: userId });
+        // A renamed guest follows its new sheet position too.
+        Object.assign(entity, ren.row, { updatedBy: userId, sheetRow: ren.rowNumber });
         await this.invitations.save(entity);
         result.renamed++;
       } catch (err) {
