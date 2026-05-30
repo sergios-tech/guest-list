@@ -1,8 +1,8 @@
 import {
   BadRequestException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, In, QueryFailedError, Repository } from 'typeorm';
 import { google } from 'googleapis';
 import { Invitation } from '../../entities/invitation.entity';
 import { Attendee } from '../../entities/attendee.entity';
@@ -10,9 +10,11 @@ import { UserGoogleCredential } from '../../entities/user-google-credential.enti
 import { Client } from '../../entities/client.entity';
 import { GoogleOauthService } from './google-oauth.service';
 import {
-  ATTENDEES_COLUMN_HEADER, norm, parseRow, ParsedAttendee, RawSheetRow,
+  ATTENDEES_COLUMN_HEADER, norm, parseRow, ParsedAttendee, ParsedRow, RawSheetRow,
 } from './sheet-parser.util';
-import { classifyRows, reconcileAttendees, SheetRowInput } from './reconcile.util';
+import {
+  classifyRows, normalizeLabel, reconcileAttendees, ReconcilePlan, SheetRowInput,
+} from './reconcile.util';
 
 // Default sheet tab when a client row leaves google_sheet_tab unset. The sheet
 // id is now per-client (Client.googleSheetId) and has no env fallback — a client
@@ -56,7 +58,7 @@ export class GoogleSyncService {
     @InjectRepository(UserGoogleCredential) private readonly creds: Repository<UserGoogleCredential>,
     @InjectRepository(Client) private readonly clients: Repository<Client>,
     private readonly oauth: GoogleOauthService,
-    private readonly dataSource: DataSource,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async getStatus(userId: string): Promise<ConnectionStatus> {
@@ -178,51 +180,55 @@ export class GoogleSyncService {
       sheetRows.push({ rowNumber, row: parsed.row });
     }
 
+    // Reconcile the parsed sheet against the DB. Both modes share this setup and
+    // the apply helper; only the apply STRATEGY differs (clean is atomic and
+    // deletes orphans, continue is best-effort and leaves orphans).
+    let rowsToApply = sheetRows;
     if (mode === 'clean') {
-      // Destructive re-import: drop this client's invitations, then insert every
-      // parsed row fresh. FK rules do the child cleanup — attendee.invitation_id
-      // is ON DELETE CASCADE, seat.invitation_id/attendee_id are ON DELETE SET
-      // NULL (seating plans/tables survive, their seats are freed). Wrapped in a
-      // transaction so a hard failure rolls back and the old data is preserved;
-      // per-row CHECK violations are still collected as soft errors.
-      await this.dataSource.transaction(async (mgr) => {
-        const del = await mgr.delete(Invitation, { clientId });
-        result.deleted = del.affected ?? 0;
-
-        for (const sr of sheetRows) {
-          try {
-            const { attendees, ...invRow } = sr.row;
-            const entity = mgr.create(Invitation, {
-              ...invRow, clientId, createdBy: userId, updatedBy: userId,
-              sheetRow: sr.rowNumber,
-            });
-            const saved = await mgr.save(entity);
-            if (attendees.length > 0) {
-              await mgr.save(
-                attendees.map((a) => mgr.create(Attendee, {
-                  invitationId: saved.id, fullName: a.fullName, isChild: a.isChild,
-                })),
-              );
-              result.attendeesCreated += attendees.length;
-            }
-            result.inserted++;
-          } catch (err) {
-            result.errors.push({
-              rowNumber: sr.rowNumber, guestLabel: sr.row.guestLabel, message: formatRowError(err),
-            });
-          }
+      // Pre-flight BEFORE any write so the transaction can be genuinely atomic.
+      // Drop out-of-range rows (they would otherwise trip a DB CHECK and, inside
+      // a transaction, abort the WHOLE batch — Postgres aborts the transaction on
+      // the first error and rejects every later statement) and collapse duplicate
+      // guest labels (clean must not create two invitations for one guest).
+      const seen = new Set<string>();
+      const filtered: SheetRowInput[] = [];
+      for (const sr of sheetRows) {
+        const invalid = validateCounts(sr.row);
+        if (invalid) {
+          result.errors.push({
+            rowNumber: sr.rowNumber, guestLabel: sr.row.guestLabel, message: invalid,
+          });
+          continue;
         }
-      });
-      return result;
+        const key = normalizeLabel(sr.row.guestLabel);
+        if (seen.has(key)) {
+          result.errors.push({
+            rowNumber: sr.rowNumber, guestLabel: sr.row.guestLabel,
+            message: 'Duplicate guest in sheet — only the first occurrence is kept',
+          });
+          continue;
+        }
+        seen.add(key);
+        filtered.push(sr);
+      }
+      // Never let a misread/empty/wrong-tab sheet wipe the whole guest list: a
+      // clean with nothing valid to import would orphan (and delete) everything.
+      if (filtered.length === 0) {
+        throw new BadRequestException({
+          code: 'CLEAN_SYNC_EMPTY_SHEET',
+          message: 'Refusing to clean: the sheet has no valid data rows to import.',
+        });
+      }
+      rowsToApply = filtered;
     }
 
     // Load every invitation for this client once, then classify in memory.
     // "Sheet wins" reconciliation: pass-1 exact label match, pass-2 similarity
-    // rename detection. Orphans (in DB, gone from sheet) are left untouched here.
+    // rename detection.
     const existing = await this.invitations.find({ where: { clientId } });
     const byId = new Map(existing.map((e) => [e.id, e]));
     const plan = classifyRows(
-      sheetRows,
+      rowsToApply,
       existing.map((e) => ({ id: e.id, guestLabel: e.guestLabel, createdAt: e.createdAt })),
     );
 
@@ -239,66 +245,118 @@ export class GoogleSyncService {
       else attByInvitation.set(a.invitationId, [a]);
     }
 
-    // Apply: each op is isolated so one bad row can't abort the whole sync.
-    for (const ins of plan.inserts) {
+    if (mode === 'clean') {
+      // Clean = the sheet is the COMPLETE source of truth. Reconcile like a normal
+      // sync (matched guests keep their id — and thus their seat and created_at),
+      // then delete the orphans (in DB, gone from the sheet). The whole apply is
+      // one transaction: a hard failure rolls back and the original data survives.
+      // Out-of-range/duplicate rows were filtered above, so nothing aborts the
+      // transaction mid-flight; errors are NOT swallowed here (isolateErrors:
+      // false), so a real failure surfaces instead of a false success.
+      await this.dataSource.transaction(async (mgr) => {
+        await this.applyPlan(mgr, plan, byId, attByInvitation, clientId, userId, result, false);
+        const orphanIds = plan.orphans.map((o) => o.id);
+        if (orphanIds.length > 0) {
+          // FK cleanup is automatic — attendee.invitation_id is ON DELETE CASCADE
+          // and seat.invitation_id/attendee_id are ON DELETE SET NULL (the orphan
+          // guests' seats are freed; seating plans/tables survive).
+          const del = await mgr.delete(Invitation, orphanIds);
+          result.deleted = del.affected ?? 0;
+        }
+      });
+      return result;
+    }
+
+    // Continue mode: best-effort and per-row isolated (one bad row can't abort the
+    // sync), non-transactional. Orphans (in DB, gone from sheet) are left alone.
+    await this.applyPlan(
+      this.dataSource.manager, plan, byId, attByInvitation, clientId, userId, result, true,
+    );
+    return result;
+  }
+
+  /**
+   * Apply a reconciliation plan's inserts/updates/renames through `mgr`.
+   *
+   * `mgr` is either a transaction's EntityManager (clean mode — atomic) or the
+   * default manager (continue mode — each save is its own implicit transaction).
+   * When `isolateErrors` is true a failing row is recorded in `result.errors` and
+   * the loop continues (continue mode's per-row isolation); when false the error
+   * propagates so the surrounding transaction rolls back (clean mode — no false
+   * success). Orphan handling is the caller's responsibility.
+   */
+  private async applyPlan(
+    mgr: EntityManager,
+    plan: ReconcilePlan,
+    byId: Map<string, Invitation>,
+    attByInvitation: Map<string, Attendee[]>,
+    clientId: string,
+    userId: string,
+    result: SyncResult,
+    isolateErrors: boolean,
+  ): Promise<void> {
+    const apply = async (
+      rowNumber: number,
+      guestLabel: string,
+      fn: () => Promise<void>,
+    ): Promise<void> => {
+      if (!isolateErrors) {
+        await fn();
+        return;
+      }
       try {
+        await fn();
+      } catch (err) {
+        result.errors.push({ rowNumber, guestLabel, message: formatRowError(err) });
+      }
+    };
+
+    for (const ins of plan.inserts) {
+      await apply(ins.rowNumber, ins.row.guestLabel, async () => {
         // attendees is a derived child collection, not an invitation column —
         // keep it out of the entity payload (the relation has cascade:false).
         const { attendees, ...invRow } = ins.row;
-        const entity = this.invitations.create({
-          ...invRow, clientId, createdBy: userId, updatedBy: userId,
-          sheetRow: ins.rowNumber,
+        const entity = mgr.create(Invitation, {
+          ...invRow, clientId, createdBy: userId, updatedBy: userId, sheetRow: ins.rowNumber,
         });
-        const saved = await this.invitations.save(entity);
-        await this.syncAttendees(saved.id, attendees, [], result);
+        const saved = await mgr.save(entity);
+        await this.syncAttendees(mgr, saved.id, attendees, [], result);
         result.inserted++;
-      } catch (err) {
-        result.errors.push({
-          rowNumber: ins.rowNumber, guestLabel: ins.row.guestLabel, message: formatRowError(err),
-        });
-      }
+      });
     }
     for (const upd of plan.updates) {
-      try {
+      await apply(upd.rowNumber, upd.row.guestLabel, async () => {
         const entity = byId.get(upd.id)!;
         const { attendees, ...invRow } = upd.row;
         // Re-stamp sheet_row each sync: a guest who moved up/down in the sheet
         // (or whose row was previously NULL) tracks its current position.
         Object.assign(entity, invRow, { updatedBy: userId, sheetRow: upd.rowNumber });
-        await this.invitations.save(entity);
-        await this.syncAttendees(upd.id, attendees, attByInvitation.get(upd.id) ?? [], result);
+        await mgr.save(entity);
+        await this.syncAttendees(mgr, upd.id, attendees, attByInvitation.get(upd.id) ?? [], result);
         result.updated++;
-      } catch (err) {
-        result.errors.push({
-          rowNumber: upd.rowNumber, guestLabel: upd.row.guestLabel, message: formatRowError(err),
-        });
-      }
+      });
     }
     for (const ren of plan.renames) {
-      try {
+      await apply(ren.rowNumber, ren.row.guestLabel, async () => {
         const entity = byId.get(ren.id)!;
         const { attendees, ...invRow } = ren.row;
         // A renamed guest follows its new sheet position too.
         Object.assign(entity, invRow, { updatedBy: userId, sheetRow: ren.rowNumber });
-        await this.invitations.save(entity);
-        await this.syncAttendees(ren.id, attendees, attByInvitation.get(ren.id) ?? [], result);
+        await mgr.save(entity);
+        await this.syncAttendees(mgr, ren.id, attendees, attByInvitation.get(ren.id) ?? [], result);
         result.renamed++;
-      } catch (err) {
-        result.errors.push({
-          rowNumber: ren.rowNumber, guestLabel: ren.row.guestLabel, message: formatRowError(err),
-        });
-      }
+      });
     }
-
-    return result;
   }
 
   /**
-   * Reconcile one invitation's attendees against the names parsed from its note.
+   * Reconcile one invitation's attendees against the names parsed from the sheet.
    * Matches by name so unchanged attendees keep their id (and thus their seat —
-   * see reconcileAttendees). Each op runs within the caller's per-row try/catch.
+   * see reconcileAttendees). Runs through the caller's `mgr` so it participates in
+   * the same transaction (clean mode) or implicit per-call transaction (continue).
    */
   private async syncAttendees(
+    mgr: EntityManager,
     invitationId: string,
     desired: ParsedAttendee[],
     existing: Attendee[],
@@ -310,23 +368,44 @@ export class GoogleSyncService {
     );
 
     if (recon.toInsert.length > 0) {
-      await this.attendees.save(
-        recon.toInsert.map((a) => this.attendees.create({
+      await mgr.save(
+        recon.toInsert.map((a) => mgr.create(Attendee, {
           invitationId, fullName: a.fullName, isChild: a.isChild,
         })),
       );
       result.attendeesCreated += recon.toInsert.length;
     }
     for (const u of recon.toUpdate) {
-      await this.attendees.update({ id: u.id }, { isChild: u.isChild });
+      await mgr.update(Attendee, { id: u.id }, { isChild: u.isChild });
     }
     if (recon.toDeleteIds.length > 0) {
       // seat.attendee_id is ON DELETE SET NULL — removing a dropped guest frees
       // any seat they held, which is the correct outcome (they're not coming).
-      await this.attendees.delete(recon.toDeleteIds);
+      await mgr.delete(Attendee, recon.toDeleteIds);
       result.attendeesRemoved += recon.toDeleteIds.length;
     }
   }
+}
+
+// Pre-flight guard for clean mode: the DB enforces `adults/children/planned_count/
+// forecast BETWEEN 0 AND 12` as CHECK constraints. In continue mode a violating
+// row is isolated (its own implicit transaction fails, the rest proceed), but in
+// clean mode every write shares one transaction, so a single CHECK failure would
+// abort the whole batch. Validate up front and report the row instead. Returns an
+// error message, or null when the row's counts are all in range.
+function validateCounts(row: ParsedRow): string | null {
+  const fields: Array<[string, number | null | undefined]> = [
+    ['planned count', row.plannedCount],
+    ['adults', row.adults],
+    ['children', row.children],
+    ['forecast', row.forecast],
+  ];
+  for (const [label, value] of fields) {
+    if (value != null && (value < 0 || value > 12)) {
+      return `${label} must be between 0 and 12 (got ${value})`;
+    }
+  }
+  return null;
 }
 
 function formatRowError(err: unknown): string {

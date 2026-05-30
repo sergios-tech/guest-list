@@ -32,9 +32,16 @@ interface SyncResult {
   skipped: number;
   unknownStatuses: number;
   demotedConfirmed: number;
+  attendeesCreated: number;
+  attendeesRemoved: number;
   deleted: number;
   errors: SyncRowError[];
 }
+
+// The exact word the user must type to unlock the destructive clean sync.
+// Trimmed + upper-cased on compare so a stray space or mobile auto-capitalisation
+// ("Delete", "DELETE ") still matches.
+const CLEAN_CONFIRM_WORD = 'DELETE';
 
 export default function SyncFromGoogleButton() {
   const { t } = useTranslation();
@@ -49,6 +56,8 @@ export default function SyncFromGoogleButton() {
     setDialogStep('closed');
     setCleanConfirmText('');
   };
+
+  const cleanConfirmed = cleanConfirmText.trim().toUpperCase() === CLEAN_CONFIRM_WORD;
 
   const { data: status, isLoading: statusLoading } = useQuery<ConnectionStatus>({
     queryKey: qk.googleSyncStatus(currentClientId!),
@@ -111,6 +120,7 @@ export default function SyncFromGoogleButton() {
             inserted: data.inserted,
             updated: data.updated,
             renamed: data.renamed,
+            attendees: data.attendeesCreated,
             errorCount: data.errors.length,
           }),
           'warning',
@@ -123,6 +133,7 @@ export default function SyncFromGoogleButton() {
             inserted: data.inserted,
             updated: data.updated,
             renamed: data.renamed,
+            attendees: data.attendeesCreated,
           }),
           'success',
         );
@@ -182,33 +193,52 @@ export default function SyncFromGoogleButton() {
         </Typography>
       </Stack>
 
-      <Dialog open={dialogStep !== 'closed'} onClose={closeDialog} maxWidth="sm" fullWidth>
+      <Dialog
+        open={dialogStep !== 'closed'}
+        // Don't let a backdrop click / Escape dismiss the dialog while a sync is
+        // running — the mutation would keep going invisibly. Gate close on pending.
+        onClose={runSync.isPending ? undefined : closeDialog}
+        maxWidth="sm"
+        fullWidth
+      >
         {dialogStep === 'choose' ? (
-          <>
+          // Wrapped in a form so pressing Enter triggers the default (Continue)
+          // submit button — satisfying "the default button should be Continue".
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!runSync.isPending) runSync.mutate('continue');
+            }}
+          >
             <DialogTitle>{t('sync.modeTitle')}</DialogTitle>
             <DialogContent>
               <DialogContentText>{t('sync.modeBody')}</DialogContentText>
             </DialogContent>
             <DialogActions>
-              <Button onClick={closeDialog}>{t('invitation.cancel')}</Button>
+              <Button type="button" onClick={closeDialog} disabled={runSync.isPending}>
+                {t('invitation.cancel')}
+              </Button>
               <Button
+                type="button"
                 color="error"
                 onClick={() => setDialogStep('confirmClean')}
                 disabled={runSync.isPending}
               >
                 {t('sync.modeClean')}
               </Button>
-              <Button
-                variant="contained"
-                onClick={() => runSync.mutate('continue')}
-                disabled={runSync.isPending}
-              >
+              <Button type="submit" variant="contained" disabled={runSync.isPending}>
                 {runSync.isPending ? t('sync.syncing') : t('sync.modeContinue')}
               </Button>
             </DialogActions>
-          </>
+          </form>
         ) : (
-          <>
+          // Enter submits the destructive action only when the typed word matches.
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (cleanConfirmed && !runSync.isPending) runSync.mutate('clean');
+            }}
+          >
             <DialogTitle>{t('sync.cleanConfirmTitle')}</DialogTitle>
             <DialogContent>
               <DialogContentText sx={{ mb: 2 }}>{t('sync.cleanConfirmBody')}</DialogContentText>
@@ -222,19 +252,23 @@ export default function SyncFromGoogleButton() {
               />
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => { setDialogStep('choose'); setCleanConfirmText(''); }}>
+              <Button
+                type="button"
+                onClick={() => { setDialogStep('choose'); setCleanConfirmText(''); }}
+                disabled={runSync.isPending}
+              >
                 {t('sync.back')}
               </Button>
               <Button
+                type="submit"
                 variant="contained"
                 color="error"
-                onClick={() => runSync.mutate('clean')}
-                disabled={cleanConfirmText !== 'DELETE' || runSync.isPending}
+                disabled={!cleanConfirmed || runSync.isPending}
               >
                 {runSync.isPending ? t('sync.syncing') : t('sync.cleanConfirmButton')}
               </Button>
             </DialogActions>
-          </>
+          </form>
         )}
       </Dialog>
 
@@ -263,7 +297,7 @@ export default function SyncFromGoogleButton() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setErrorDetail(null)}>
-            {t('invitation.cancel')}
+            {t('sync.close')}
           </Button>
         </DialogActions>
       </Dialog>
