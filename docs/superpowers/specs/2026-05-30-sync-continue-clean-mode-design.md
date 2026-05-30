@@ -2,10 +2,11 @@
 
 **Date:** 2026-05-30
 **Branch:** feat/sheet-attendees-column
-**Status:** Implemented — clean-mode behaviour revised during code review (see
-"Revision" below). Original design was wipe-and-reimport; shipped design is an
-atomic reconcile + delete-orphans. Pending product sign-off on the semantic
-change.
+**Status:** Implemented & approved. Clean-mode behaviour was revised during code
+review from the original wipe-and-reimport to an atomic reconcile + delete-orphans
+(see "Revision" below). Product sign-off on the semantic change: **confirmed
+2026-05-30** — keep the mirror/reconcile behaviour (preserve seats; delete only
+guests missing from the sheet).
 
 ## Revision (2026-05-30, post code-review)
 
