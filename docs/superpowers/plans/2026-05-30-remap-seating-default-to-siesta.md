@@ -132,7 +132,9 @@ WITH src_labels AS (
   SELECT c.src_label, c.tgt_inv_id
   FROM cand c JOIN best b ON b.src_label = c.src_label AND c.tier = b.bt
 )
-SELECT src_label, max(tgt_inv_id) AS tgt_inv_id
+-- Postgres has no max(uuid); HAVING already guarantees one distinct value, so
+-- array_agg(DISTINCT ...))[1] returns that single id.
+SELECT src_label, (array_agg(DISTINCT tgt_inv_id))[1] AS tgt_inv_id
 FROM chosen
 GROUP BY src_label
 HAVING count(DISTINCT tgt_inv_id) = 1;
@@ -163,7 +165,7 @@ WITH src_att AS (
   SELECT c.src_att_id, c.tgt_att_id
   FROM cand c JOIN best b ON b.src_att_id = c.src_att_id AND c.tier = b.bt
 )
-SELECT src_att_id, max(tgt_att_id) AS tgt_att_id
+SELECT src_att_id, (array_agg(DISTINCT tgt_att_id))[1] AS tgt_att_id
 FROM chosen
 GROUP BY src_att_id
 HAVING count(DISTINCT tgt_att_id) = 1;
