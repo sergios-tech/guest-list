@@ -422,8 +422,13 @@ export default function Seating() {
             {activeDrag ? (
               <Chip
                 label={activeDrag.label}
-                color="primary"
-                sx={{ cursor: 'grabbing', boxShadow: 4 }}
+                sx={{
+                  cursor: 'grabbing',
+                  boxShadow: 4,
+                  backgroundColor: 'rgb(128, 255, 128)',
+                  border: '2px solid rgb(0, 255, 0)',
+                  color: 'rgba(0, 0, 0, 0.87)',
+                }}
               />
             ) : null}
           </DragOverlay>
