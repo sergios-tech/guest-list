@@ -19,6 +19,14 @@ export enum AccommodationType {
   Aria = 'ARIA',
 }
 
+// Per-row headcount columns (planned_count/adults/children/forecast) are bounded
+// to [COUNT_MIN, COUNT_MAX] by DB CHECK constraints (db/01_schema.sql) — a
+// wedding-party-size cap. Single source for the bound shared by the DTO
+// validators and the Google-sync clean-mode pre-flight (validateCounts), so a
+// future change can't leave one layer out of sync.
+export const COUNT_MIN = 0;
+export const COUNT_MAX = 12;
+
 @Entity('invitation')
 export class Invitation {
   @PrimaryGeneratedColumn('uuid')
@@ -66,7 +74,7 @@ export class Invitation {
   // Original Google Sheet row number (1-indexed), set on sync. Drives the
   // default list order so the grid mirrors the spreadsheet. NULL for rows
   // created manually in the app — those sort last (see InvitationsService.list).
-  @Column({ name: 'sheet_row', type: 'smallint', nullable: true })
+  @Column({ name: 'sheet_row', type: 'int', nullable: true })
   sheetRow?: number | null;
 
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
