@@ -57,13 +57,10 @@ ACCOM_PATTERNS = [
     (re.compile(r"\baria\b",                       re.I), "ARIA"),
 ]
 
-# Words that aren't real names — note categories
-NON_NAME_WORDS = {
-    "drugarice", "koleginice", "komšiluk", "komsiluk", "kuma",
-    "jovana planira troje", "jovana planira samo odrasle",
-    "potreban smeštaj u siesti", "potreban smestaj u siesti",
-    "?",
-}
+# Canonical header title of the dedicated attendees column. Located by header
+# NAME (not a fixed column letter). Keep aligned with
+# sheet-parser.util.ts:ATTENDEES_COLUMN_HEADER.
+ATTENDEES_COLUMN_HEADER = "Zvanica u pratnji"
 
 def sql_str(value):
     if value is None or value == "":
@@ -101,40 +98,37 @@ def extract_accommodation(note: str):
     cleaned = cleaned.strip(" ,.-")
     return matched_code, cleaned
 
-def looks_like_name_list(note: str):
-    if not note:
-        return False
-    low = note.lower().strip()
-    if low in NON_NAME_WORDS:
-        return False
-    parts = re.split(r",|\s+i\s+", note)
-    parts = [p.strip() for p in parts if p.strip()]
-    if not parts:
-        return False
-    # single-token: must look like a proper noun (starts uppercase) and be short
-    if len(parts) == 1:
-        p = parts[0]
-        return (1 < len(p) < 20
-                and " " not in p
-                and p[0].isupper()
-                and p.lower() not in NON_NAME_WORDS)
-    # multi-part: each part must be a short, name-shaped fragment
-    for p in parts:
-        if any(c.isdigit() for c in p) or len(p) > 30:
-            return False
-        if len(p.split()) > 3:
-            return False
-        if p.lower() in NON_NAME_WORDS:
-            return False
-    return True
+def parse_companions(value: str, deca):
+    """Parse the dedicated 'Zvanica u pratnji' column into (name, is_child) pairs.
 
-def split_attendees(note: str):
-    parts = re.split(r",|\s+i\s+", note)
-    return [p.strip() for p in parts if p.strip() and p.strip().lower() not in NON_NAME_WORDS]
+    COMMA-delimited full names; a single name may contain spaces ("Baba Ljubica"),
+    so split ONLY on commas. The trailing `deca`-count names are children (sheet
+    lists adults first). Keep aligned with sheet-parser.util.ts:parseCompanions.
+    """
+    if not value:
+        return []
+    names = [p.strip() for p in value.split(",") if p.strip()]
+    if not names:
+        return []
+    n_children = int(deca) if isinstance(deca, (int, float)) else 0
+    return [
+        (name, n_children > 0 and idx >= len(names) - n_children)
+        for idx, name in enumerate(names)
+    ]
 
 def main():
     wb = load_workbook(SRC, data_only=True)  # data_only resolves formulas
     ws = wb["Pozivnice"]
+
+    # Locate the attendees column by header name (row 1); None if not present.
+    wanted_header = norm(ATTENDEES_COLUMN_HEADER).lower()
+    pratnja_col = next(
+        (c for c in range(1, ws.max_column + 1)
+         if norm(ws.cell(1, c).value).lower() == wanted_header),
+        None,
+    )
+    if pratnja_col is None:
+        print(f"  note: no '{ATTENDEES_COLUMN_HEADER}' column found; no attendees seeded")
 
     statements = []
     statements.append(f"-- Generated seed from {SRC.name}")
@@ -186,6 +180,8 @@ ON CONFLICT (user_id, client_id) DO NOTHING;
         datum = ws.cell(r, 8).value
         napomena_raw = ws.cell(r, 9).value
         napomena = str(napomena_raw).strip() if napomena_raw else ""
+        pratnja_raw = ws.cell(r, pratnja_col).value if pratnja_col else None
+        pratnja = str(pratnja_raw).strip() if pratnja_raw else ""
 
         status_key = norm(status_raw)
         status = STATUS_MAP.get(status_key)
@@ -203,15 +199,15 @@ ON CONFLICT (user_id, client_id) DO NOTHING;
         accom, remaining_note = extract_accommodation(napomena)
 
         decline_reason = None
-        attendees_from_note = []
         final_notes = remaining_note or None
 
         if status == "ODBIJENO":
             decline_reason = remaining_note or None
             final_notes = None
-        elif remaining_note and looks_like_name_list(remaining_note):
-            attendees_from_note = split_attendees(remaining_note)
-            final_notes = None  # consumed by attendees
+
+        # Attendees come from the dedicated 'Zvanica u pratnji' column, not the
+        # note. Declined guests aren't attending, so they get no attendees.
+        attendees = [] if status == "ODBIJENO" else parse_companions(pratnja, deca)
 
         inv_id = "'" + str(uuid.uuid4()) + "'"
 
@@ -230,10 +226,7 @@ ON CONFLICT (user_id, client_id) DO NOTHING;
             f"{sql_str(final_notes)}, {r}, {owner_id}, {owner_id})"
         )
 
-        # Heuristic: how many attendees are children?
-        n_children = int(deca) if isinstance(deca, (int, float)) else 0
-        for idx, name in enumerate(attendees_from_note):
-            is_child = idx >= (len(attendees_from_note) - n_children) and n_children > 0
+        for name, is_child in attendees:
             attendee_rows.append(
                 f"(gen_random_uuid(), {inv_id}, {sql_str(name)}, "
                 f"{'TRUE' if is_child else 'FALSE'})"
