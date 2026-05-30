@@ -16,7 +16,13 @@
 BEGIN;
 
 ALTER TABLE invitation
-  ADD COLUMN IF NOT EXISTS sheet_row smallint;
+  ADD COLUMN IF NOT EXISTS sheet_row integer;
+
+-- Widen if an earlier run of this migration added the column as smallint. The
+-- sheet_row mirrors an externally-controlled spreadsheet row that can exceed the
+-- 32767 smallint ceiling. No-op when already integer; safe (widening) otherwise.
+ALTER TABLE invitation
+  ALTER COLUMN sheet_row TYPE integer;
 
 CREATE INDEX IF NOT EXISTS ix_invitation_client_sheet_row
   ON invitation(client_id, sheet_row);

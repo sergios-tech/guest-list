@@ -64,10 +64,18 @@ export function parseCompanions(value: string, children: number | null): ParsedA
   if (!value) return [];
   const names = value.split(',').map((n) => n.trim()).filter((n) => n.length > 0);
   if (names.length === 0) return [];
-  const nChildren = children ?? 0;
+  // Trailing `children` names are kids (sheet lists adults first). The heuristic
+  // only holds when there are at least as many names as claimed children; if the
+  // sheet claims MORE children than companions listed, the split is ambiguous
+  // (an unguarded `names.length - children` goes negative and marks every name —
+  // adults included — a child). In that case treat the named companions as adults
+  // rather than risk labelling a named adult (e.g. a spouse, with the kids
+  // unnamed) as a child. Keep aligned with generate_seed.py:parse_companions.
+  const claimed = Math.max(children ?? 0, 0);
+  const childCount = claimed <= names.length ? claimed : 0;
   return names.map((fullName, idx) => ({
     fullName,
-    isChild: nChildren > 0 && idx >= names.length - nChildren,
+    isChild: childCount > 0 && idx >= names.length - childCount,
   }));
 }
 

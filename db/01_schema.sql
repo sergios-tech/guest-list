@@ -119,8 +119,10 @@ CREATE TABLE invitation (
   -- Original Google Sheet row number (1-indexed), captured on sync so the
   -- invitations list can reproduce the spreadsheet's row order instead of
   -- sorting alphabetically. NULL for invitations created manually in the app
-  -- (they sort after all synced rows — see InvitationsService.list).
-  sheet_row        smallint,
+  -- (they sort after all synced rows — see InvitationsService.list). `integer`,
+  -- not smallint: it mirrors an externally-controlled sheet row that can exceed
+  -- the 32767 smallint ceiling.
+  sheet_row        integer,
   created_by       uuid REFERENCES app_user(id) ON DELETE SET NULL,
   updated_by       uuid REFERENCES app_user(id) ON DELETE SET NULL,
   created_at       timestamptz NOT NULL DEFAULT now(),

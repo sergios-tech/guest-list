@@ -5,26 +5,26 @@ import {
 import { Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
 import {
-  RsvpStatus, AccommodationType,
+  RsvpStatus, AccommodationType, COUNT_MIN, COUNT_MAX,
 } from '../../entities/invitation.entity';
 
 export class CreateInvitationDto {
   @IsString() @MaxLength(200)
   guestLabel!: string;
 
-  @IsOptional() @IsInt() @Min(0) @Max(12)
+  @IsOptional() @IsInt() @Min(COUNT_MIN) @Max(COUNT_MAX)
   plannedCount?: number;
 
   @IsOptional() @IsEnum(RsvpStatus)
   status?: RsvpStatus;
 
-  @IsOptional() @IsInt() @Min(0) @Max(12)
+  @IsOptional() @IsInt() @Min(COUNT_MIN) @Max(COUNT_MAX)
   adults?: number;
 
-  @IsOptional() @IsInt() @Min(0) @Max(12)
+  @IsOptional() @IsInt() @Min(COUNT_MIN) @Max(COUNT_MAX)
   children?: number;
 
-  @IsOptional() @IsInt() @Min(0) @Max(12)
+  @IsOptional() @IsInt() @Min(COUNT_MIN) @Max(COUNT_MAX)
   forecast?: number;
 
   @IsOptional() @IsISO8601()

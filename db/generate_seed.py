@@ -110,9 +110,18 @@ def parse_companions(value: str, deca):
     names = [p.strip() for p in value.split(",") if p.strip()]
     if not names:
         return []
-    n_children = int(deca) if isinstance(deca, (int, float)) else 0
+    # Trailing `deca` names are kids (sheet lists adults first). The heuristic
+    # only holds when there are at least as many names as claimed children; if the
+    # sheet claims MORE children than companions listed, the split is ambiguous
+    # (an unguarded len(names) - n_children goes negative and marks every
+    # companion — adults included — a child). In that case treat the named
+    # companions as adults rather than risk labelling a named adult (e.g. a
+    # spouse, with the kids unnamed) as a child. Keep aligned with
+    # sheet-parser.util.ts:parseCompanions.
+    claimed = max(0, int(deca) if isinstance(deca, (int, float)) else 0)
+    child_count = claimed if claimed <= len(names) else 0
     return [
-        (name, n_children > 0 and idx >= len(names) - n_children)
+        (name, child_count > 0 and idx >= len(names) - child_count)
         for idx, name in enumerate(names)
     ]
 
