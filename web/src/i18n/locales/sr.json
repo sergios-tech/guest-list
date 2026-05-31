@@ -141,6 +141,7 @@
     "ARIA": "Aria"
   },
   "sync": {
+    "sectionLabel": "Google Sheets",
     "connectGoogle": "Poveži Google",
     "notConnectedHelp": "Jednom autorizujte da biste uvozili spisak gostiju iz Google Sheets.",
     "connectSuccess": "Google nalog je povezan.",
@@ -148,7 +149,10 @@
     "syncFromGoogleSheet": "Sinhronizuj iz Google Sheet-a",
     "syncing": "Sinhronizacija…",
     "connected": "Povezan kao {{email}}",
+    "connectedNoEmail": "Povezan",
     "disconnect": "Prekini vezu",
+    "disconnectConfirmTitle": "Prekinuti vezu sa Google nalogom?",
+    "disconnectConfirmBody": "Nakon prekida veze morate ponovo da autorizujete pristup pre sledeće sinhronizacije spiska gostiju.",
     "disconnected": "Google nalog je odvezan.",
     "modeTitle": "Sinhronizacija iz Google Sheet-a",
     "modeBody": "Izaberite način sinhronizacije. Nastavi dodaje nove i ažurira postojeće redove, ali nikad ne briše. Očisti radi isto I uklanja goste kojih više nema u tabeli, tako da aplikacija tačno odražava tabelu.",

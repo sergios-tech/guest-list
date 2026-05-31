@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
-  Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogContentText, DialogTitle, Link, Stack, TextField, Typography,
+  Button, Card, CardContent, CircularProgress, Dialog, DialogActions, DialogContent,
+  DialogContentText, DialogTitle, Stack, TextField, Typography,
 } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import CloudSyncIcon from '@mui/icons-material/CloudSync';
@@ -50,6 +50,7 @@ export default function SyncFromGoogleButton() {
   const { currentClientId } = useAuth();
   const [dialogStep, setDialogStep] = useState<'closed' | 'choose' | 'confirmClean'>('closed');
   const [cleanConfirmText, setCleanConfirmText] = useState('');
+  const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [errorDetail, setErrorDetail] = useState<SyncRowError[] | null>(null);
 
   const closeDialog = () => {
@@ -99,6 +100,7 @@ export default function SyncFromGoogleButton() {
   const disconnect = useMutation({
     mutationFn: async () => api.delete('/google-sync/connection'),
     onSuccess: () => {
+      setDisconnectOpen(false);
       qc.invalidateQueries({ queryKey: qk.googleSyncStatus(currentClientId!) });
       snackbar.show(t('sync.disconnected'), 'success');
     },
@@ -139,54 +141,101 @@ export default function SyncFromGoogleButton() {
 
   if (statusLoading) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1 }}>
-        <CircularProgress size={20} />
-      </Box>
+      <Card>
+        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={20} />
+        </CardContent>
+      </Card>
     );
   }
 
   if (!status?.connected) {
     return (
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-        <Button
-          variant="outlined"
-          startIcon={<GoogleIcon />}
-          onClick={() => beginConnect.mutate()}
-          disabled={beginConnect.isPending}
-        >
-          {t('sync.connectGoogle')}
-        </Button>
-        <Typography variant="body2" color="text.secondary">
-          {t('sync.notConnectedHelp')}
-        </Typography>
-      </Stack>
+      <Card>
+        <CardContent>
+          <Typography variant="overline" color="text.secondary" display="block">
+            {t('sync.sectionLabel')}
+          </Typography>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ sm: 'center' }}
+            sx={{ mt: 1 }}
+          >
+            <Button
+              variant="outlined"
+              startIcon={<GoogleIcon />}
+              onClick={() => beginConnect.mutate()}
+              disabled={beginConnect.isPending}
+              sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
+            >
+              {t('sync.connectGoogle')}
+            </Button>
+            <Typography variant="body2" color="text.secondary">
+              {t('sync.notConnectedHelp')}
+            </Typography>
+          </Stack>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-        <Button
-          variant="contained"
-          startIcon={<CloudSyncIcon />}
-          onClick={() => setDialogStep('choose')}
-        >
-          {t('sync.syncFromGoogleSheet')}
-        </Button>
-        <Typography variant="body2" color="text.secondary">
-          {t('sync.connected', { email: status.googleAccount ?? '' })}
-          {' · '}
-          <Link
-            component="button"
-            type="button"
-            onClick={() => disconnect.mutate()}
-            disabled={disconnect.isPending}
-            underline="hover"
+      <Card>
+        <CardContent>
+          <Typography variant="overline" color="text.secondary" display="block">
+            {t('sync.sectionLabel')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            {status.googleAccount
+              ? t('sync.connected', { email: status.googleAccount })
+              : t('sync.connectedNoEmail')}
+          </Typography>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ sm: 'center' }}
           >
+            <Button
+              variant="contained"
+              startIcon={<CloudSyncIcon />}
+              onClick={() => setDialogStep('choose')}
+              sx={{ textTransform: 'none', width: { xs: '100%', sm: 'auto' } }}
+            >
+              {t('sync.syncFromGoogleSheet')}
+            </Button>
+            <Button
+              variant="text"
+              onClick={() => setDisconnectOpen(true)}
+              disabled={disconnect.isPending}
+              sx={{ textTransform: 'none', color: 'text.secondary', width: { xs: '100%', sm: 'auto' } }}
+            >
+              {t('sync.disconnect')}
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={disconnectOpen}
+        onClose={disconnect.isPending ? undefined : () => setDisconnectOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t('sync.disconnectConfirmTitle')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{t('sync.disconnectConfirmBody')}</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDisconnectOpen(false)} disabled={disconnect.isPending}>
+            {t('invitation.cancel')}
+          </Button>
+          <Button color="error" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>
             {t('sync.disconnect')}
-          </Link>
-        </Typography>
-      </Stack>
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={dialogStep !== 'closed'}

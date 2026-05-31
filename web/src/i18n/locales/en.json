@@ -141,6 +141,7 @@
     "ARIA": "Aria"
   },
   "sync": {
+    "sectionLabel": "Google Sheets",
     "connectGoogle": "Connect Google",
     "notConnectedHelp": "Authorise once to import your guest list from Google Sheets.",
     "connectSuccess": "Google account connected.",
@@ -148,7 +149,10 @@
     "syncFromGoogleSheet": "Sync from Google Sheet",
     "syncing": "Syncing…",
     "connected": "Connected as {{email}}",
+    "connectedNoEmail": "Connected",
     "disconnect": "Disconnect",
+    "disconnectConfirmTitle": "Disconnect Google account?",
+    "disconnectConfirmBody": "After disconnecting you'll need to authorise access again before the next guest-list sync.",
     "disconnected": "Google account disconnected.",
     "modeTitle": "Sync from Google Sheet",
     "modeBody": "Choose how to sync. Continue adds new rows and updates existing ones, but never deletes. Clean does the same AND removes guests that are no longer in the sheet, so the app exactly mirrors the sheet.",
