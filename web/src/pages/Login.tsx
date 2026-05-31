@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../lib/auth';
 import { apiErrorMessage, apiErrorStatus } from '../lib/errors';
 import GoogleLoginButton from '../components/GoogleLoginButton';
+import logoUrl from '../assets/Sergio_s_Tech_Logo_Official_Vector.svg';
 
 export default function Login() {
   const { t, i18n } = useTranslation();
@@ -37,6 +38,8 @@ export default function Login() {
 
   const submit = () => runLogin(() => login(email, password), () => t('login.error'));
 
+  const year = new Date().getFullYear();
+
   // The GIS button hands us a Google ID token; trade it for our JWT. Memoised so
   // its identity is stable across re-renders — GoogleLoginButton's init effect
   // depends on it. The server returns a single generic 401 for any rejected
@@ -59,7 +62,13 @@ export default function Login() {
     }}>
       <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, width: '100%', maxWidth: 380 }}>
         <Stack spacing={2}>
-          <Typography variant="h5" align="center">{t('login.title')}</Typography>
+          <Box
+            component="img"
+            src={logoUrl}
+            alt=""
+            sx={{ height: 56, width: 'auto', mx: 'auto', display: 'block' }}
+          />
+          <Typography variant="h5" align="center">{t('app.title')}</Typography>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField
             label={t('login.email')} type="email"
@@ -84,6 +93,9 @@ export default function Login() {
               {i18n.language.startsWith('en') ? 'Srpski' : 'English'}
             </Button>
           </Box>
+          <Typography variant="caption" align="center" sx={{ color: 'text.secondary' }}>
+            © {year} Sergio's Tech
+          </Typography>
         </Stack>
       </Paper>
     </Box>
