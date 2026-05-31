@@ -17,13 +17,31 @@ interface Stats {
   forecastHeadcount: number;
 }
 
-function Tile({ label, value, loading }: { label: string; value?: number; loading?: boolean }) {
+type Tone = 'default' | 'confirmed' | 'pending' | 'declined' | 'planned' | 'forecast';
+
+interface TonePalette {
+  bg: string;
+  fg: string;
+  labelFg: string;
+}
+
+const tonePalettes: Record<Tone, TonePalette | null> = {
+  default: null,
+  confirmed: { bg: '#1b5e20', fg: '#ffffff', labelFg: 'rgba(255,255,255,0.85)' },
+  pending: { bg: '#c62828', fg: '#ffffff', labelFg: 'rgba(255,255,255,0.85)' },
+  declined: { bg: '#455a64', fg: '#ffffff', labelFg: 'rgba(255,255,255,0.85)' },
+  planned: { bg: '#1565c0', fg: '#ffffff', labelFg: 'rgba(255,255,255,0.85)' },
+  forecast: { bg: '#6a1b9a', fg: '#ffffff', labelFg: 'rgba(255,255,255,0.85)' },
+};
+
+function Tile({ label, value, loading, tone = 'default' }: { label: string; value?: number; loading?: boolean; tone?: Tone }) {
+  const palette: TonePalette | null = tonePalettes[tone];
   return (
-    <Card sx={{ height: '100%' }}>
+    <Card sx={{ height: '100%', bgcolor: palette?.bg, color: palette?.fg }}>
       <CardContent>
-        <Typography variant="overline" color="text.secondary">{label}</Typography>
+        <Typography variant="overline" sx={{ color: palette?.labelFg ?? 'text.secondary' }}>{label}</Typography>
         {loading
-          ? <Skeleton variant="text" width="50%" height={48} />
+          ? <Skeleton variant="text" width="50%" height={48} sx={{ bgcolor: palette ? 'rgba(255,255,255,0.2)' : undefined }} />
           : <Typography variant="h4" sx={{ fontWeight: 600 }}>{value ?? 0}</Typography>}
       </CardContent>
     </Card>
@@ -49,17 +67,17 @@ export default function Dashboard() {
       )}
       <Grid container spacing={2}>
       {([
-        ['stats.totalInvites',       data?.totalInvites],
-        ['stats.confirmedInvites',   data?.confirmedInvites],
-        ['stats.pending',            data?.pending],
-        ['stats.declined',           data?.declined],
-        ['stats.plannedHeadcount',   data?.plannedHeadcount],
-        ['stats.confirmedHeadcount', data?.confirmedHeadcount],
-        ['stats.forecastHeadcount',  data?.forecastHeadcount],
-        ['stats.notInvited',         data?.notInvited],
-      ] as Array<[string, number | undefined]>).map(([key, value]) => (
+        ['stats.totalInvites',       data?.totalInvites,      'default'],
+        ['stats.confirmedInvites',   data?.confirmedInvites,  'confirmed'],
+        ['stats.pending',            data?.pending,           'pending'],
+        ['stats.declined',           data?.declined,          'declined'],
+        ['stats.plannedHeadcount',   data?.plannedHeadcount,  'planned'],
+        ['stats.confirmedHeadcount', data?.confirmedHeadcount,'confirmed'],
+        ['stats.forecastHeadcount',  data?.forecastHeadcount, 'forecast'],
+        ['stats.notInvited',         data?.notInvited,        'default'],
+      ] as Array<[string, number | undefined, Tone]>).map(([key, value, tone]) => (
         <Grid key={key} item xs={6} sm={4} md={3}>
-          <Tile label={t(key)} value={value} loading={isLoading} />
+          <Tile label={t(key)} value={value} loading={isLoading} tone={tone} />
         </Grid>
       ))}
       </Grid>
