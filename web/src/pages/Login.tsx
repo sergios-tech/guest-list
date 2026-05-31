@@ -60,15 +60,29 @@ export default function Login() {
       minHeight: '100vh', display: 'grid', placeItems: 'center',
       px: 2, bgcolor: 'background.default',
     }}>
-      <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, width: '100%', maxWidth: 380 }}>
-        <Stack spacing={2}>
-          <Box
-            component="img"
-            src={logoUrl}
-            alt=""
-            sx={{ height: 56, width: 'auto', mx: 'auto', display: 'block' }}
-          />
-          <Typography variant="h5" align="center">{t('app.title')}</Typography>
+      <Paper elevation={3} sx={{ width: '100%', maxWidth: 380, overflow: 'hidden' }}>
+        {/* Full-bleed masthead: the app title on a filled primary rectangle. */}
+        <Box sx={{
+          bgcolor: 'primary.main', color: 'primary.contrastText',
+          py: 1.5, px: 2, textAlign: 'center',
+        }}>
+          <Typography variant="h6" component="h1" sx={{
+            fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em',
+          }}>
+            {t('app.title')}
+          </Typography>
+        </Box>
+        {/* Logo sits below the title bar, with a small gap beneath it. */}
+        <Box
+          component="img"
+          src={logoUrl}
+          alt=""
+          sx={{
+            height: 56, width: 'auto', mx: 'auto', display: 'block',
+            mt: { xs: 3, sm: 4 }, mb: 1,
+          }}
+        />
+        <Stack spacing={2} sx={{ p: { xs: 3, sm: 4 } }}>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField
             label={t('login.email')} type="email"
