@@ -364,7 +364,7 @@ export default function Seating() {
       ) : (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <Grid container spacing={2} sx={{ flex: 1, minHeight: 0 }}>
-            <Grid item xs={12} md={3} lg={2.5}>
+            <Grid item xs={12} md={3} lg={2.5} sx={{ height: { xs: 'auto', md: '100%' }, minHeight: 0 }}>
               {/* key={selectedId} so switching plans remounts the sidebar and
                   drops its local search query — pins are wiped above for the
                   same reason. */}
@@ -375,9 +375,20 @@ export default function Seating() {
                 onHoist={hoistHousehold}
               />
             </Grid>
-            <Grid item xs={12} md={9} lg={9.5}>
-              <Stack spacing={2}>
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            {/* The tables column owns its own vertical scroll (toolbar pinned,
+                tables scroll beneath) so scrolling the tables never moves the
+                independent unseated sidebar. minHeight:0 lets the inner
+                overflow container shrink below its content height. */}
+            <Grid item xs={12} md={9} lg={9.5} sx={{ height: { xs: 'auto', md: '100%' }, minHeight: 0 }}>
+              <Stack spacing={2} sx={{ height: { xs: 'auto', md: '100%' }, minHeight: 0 }}>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                  sx={{ flexShrink: 0 }}
+                >
                   <Typography variant="h6" sx={{ flexGrow: 1 }}>
                     {plan.name}
                   </Typography>
@@ -413,6 +424,10 @@ export default function Seating() {
                     flexWrap: 'wrap',
                     gap: 3,
                     alignContent: 'flex-start',
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: 'auto',
+                    pr: 0.5,
                   }}
                 >
                   {plan.tables.map((table) => (
