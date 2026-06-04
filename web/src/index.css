@@ -29,3 +29,36 @@ body { margin: 0; font-family: Roboto, system-ui, sans-serif; }
 .ag-theme-material .ag-row-pinned .ag-cell {
   border-top: 2px solid #b45309;
 }
+
+/* ---------------- Print ----------------
+   When printing, blank the whole app shell (fixed AppBar, Drawer, the Print
+   page's own toolbar) and reveal only the active report. Using `visibility`
+   rather than `display:none` keeps the report in normal document flow so it
+   prints from the top of the page; descendants are flipped back to visible. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+  /* Controls inside the print area (report switcher, Print button) must not
+     appear on paper even though they live in the printed subtree. */
+  .print-hide {
+    display: none !important;
+  }
+  /* Keep a table block from being split across two pages where possible. */
+  .print-keep-together {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

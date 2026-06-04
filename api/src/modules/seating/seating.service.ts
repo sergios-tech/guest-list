@@ -124,6 +124,29 @@ interface UnseatedUnit {
   isChild?: boolean;
 }
 
+// Denormalised payload for the Print screen. The plan drives the table-list and
+// graphical reports; `guests` is the confirmed-invitation roster used by the
+// guest-list report, with each named attendee's table resolved from the plan
+// (null when that attendee isn't seated in this plan).
+interface PrintGuestAttendee {
+  id: string;
+  fullName: string;
+  isChild: boolean;
+  tableNumber: number | null;
+}
+
+interface PrintGuest {
+  invitationId: string;
+  guestLabel: string;
+  confirmedTotal: number;
+  attendees: PrintGuestAttendee[];
+}
+
+interface PrintDataView {
+  plan: PlanDetailView;
+  guests: PrintGuest[];
+}
+
 @Injectable()
 export class SeatingService {
   constructor(
@@ -820,6 +843,44 @@ export class SeatingService {
       }
     }
     return out;
+  }
+
+  // ---------------- print ----------------
+
+  // One denormalised snapshot for all three Print reports. Reuses findPlan
+  // (which already joins seats → attendee/invitation), then layers the
+  // confirmed-guest roster on top with each attendee's table resolved from the
+  // plan. Confirmed-only, alphabetical by guest label — a check-in/registry
+  // sheet, so unseated attendees still appear with a null tableNumber.
+  async printData(planId: string, clientId: string): Promise<PrintDataView> {
+    const plan = await this.findPlan(planId, clientId);
+
+    const attendeeTable = new Map<string, number>();
+    for (const t of plan.tables) {
+      for (const s of t.seats) {
+        if (s.attendeeId) attendeeTable.set(s.attendeeId, t.tableNumber);
+      }
+    }
+
+    const invitations = await this.invitations.find({
+      where: { status: RsvpStatus.Confirmed, clientId },
+      relations: ['attendees'],
+      order: { guestLabel: 'ASC' },
+    });
+
+    const guests: PrintGuest[] = invitations.map((inv) => ({
+      invitationId: inv.id,
+      guestLabel: inv.guestLabel,
+      confirmedTotal: inv.confirmedTotal ?? 0,
+      attendees: (inv.attendees ?? []).map((a) => ({
+        id: a.id,
+        fullName: a.fullName,
+        isChild: a.isChild,
+        tableNumber: attendeeTable.get(a.id) ?? null,
+      })),
+    }));
+
+    return { plan, guests };
   }
 }
 

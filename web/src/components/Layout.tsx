@@ -8,6 +8,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
+import PrintIcon from '@mui/icons-material/Print';
 import LogoutIcon from '@mui/icons-material/Logout';
 import BusinessIcon from '@mui/icons-material/Business';
 import { useTheme } from '@mui/material/styles';
@@ -66,6 +67,10 @@ export default function Layout({ children }: { children: ReactNode }) {
       {
         to: '/seating', icon: <TableRestaurantIcon />, label: t('nav.seating'),
         selected: loc.pathname.startsWith('/seating'),
+      },
+      {
+        to: '/print', icon: <PrintIcon />, label: t('nav.print'),
+        selected: loc.pathname.startsWith('/print'),
       },
       ...(user?.isSuperAdmin
         ? [{

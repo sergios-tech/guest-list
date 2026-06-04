@@ -247,7 +247,9 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
 interface TableCircleProps {
   table: TableView;
   totalTables: number;
-  onEdit: (table: TableView) => void;
+  // Optional so the same table can render read-only (e.g. the Print screen):
+  // when omitted, the edit button is not shown at all.
+  onEdit?: (table: TableView) => void;
   onHoist?: (invitationId: string) => void;
   onUnseat?: (seatId: string) => void;
 }
@@ -290,15 +292,18 @@ export default function TableCircle({
         p: 1,
       }}
     >
-      {/* Edit button — top-right corner, separate from any seat */}
-      <IconButton
-        size="small"
-        onClick={() => onEdit(table)}
-        aria-label={t('seating.editTable')}
-        sx={{ position: 'absolute', top: 4, right: 4, zIndex: 20 }}
-      >
-        <EditIcon fontSize="small" />
-      </IconButton>
+      {/* Edit button — top-right corner, separate from any seat. Hidden in
+          read-only contexts (Print) where no onEdit handler is supplied. */}
+      {onEdit ? (
+        <IconButton
+          size="small"
+          onClick={() => onEdit(table)}
+          aria-label={t('seating.editTable')}
+          sx={{ position: 'absolute', top: 4, right: 4, zIndex: 20 }}
+        >
+          <EditIcon fontSize="small" />
+        </IconButton>
+      ) : null}
 
       {/* The table itself */}
       <Box

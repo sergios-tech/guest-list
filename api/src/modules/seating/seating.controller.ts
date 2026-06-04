@@ -71,6 +71,15 @@ export class SeatingController {
     return this.svc.removePlan(id, clientId);
   }
 
+  @Get('plans/:id/print')
+  @Roles('OWNER', 'EDITOR', 'VIEWER')
+  printData(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentClientId() clientId: string,
+  ) {
+    return this.svc.printData(id, clientId);
+  }
+
   @Get('plans/:id/unseated')
   @Roles('OWNER', 'EDITOR', 'VIEWER')
   unseated(

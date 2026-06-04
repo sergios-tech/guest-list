@@ -10,6 +10,7 @@
     "invitations": "Invitations",
     "addInvitation": "Add Invitation",
     "seating": "Seating",
+    "print": "Print",
     "admin": "Admin",
     "selectClient": "Select client",
     "collapseSidebar": "Collapse sidebar",
@@ -135,6 +136,23 @@
     "unseatAllDone": "{{count}} guests unseated.",
     "seatCleared": "Seat cleared.",
     "undo": "Undo"
+  },
+  "print": {
+    "title": "Print",
+    "reportGuests": "Guest list",
+    "reportTables": "Table list",
+    "reportLayout": "Table layout",
+    "printButton": "Print",
+    "noActivePlan": "No active seating plan. Activate a plan on the Seating page to print.",
+    "planLabel": "Plan: {{name}}",
+    "guestsHeading": "Guest list",
+    "tablesHeading": "Tables",
+    "layoutHeading": "Table layout",
+    "confirmed": "{{count}} confirmed",
+    "notSeated": "—",
+    "child": "child",
+    "noGuests": "No confirmed guests.",
+    "emptyTable": "No guests seated"
   },
   "accommodation": {
     "NONE": "None",

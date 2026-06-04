@@ -10,6 +10,7 @@
     "invitations": "Pozivnice",
     "addInvitation": "Dodaj pozivnicu",
     "seating": "Raspored stolova",
+    "print": "Štampa",
     "admin": "Admin",
     "selectClient": "Izaberi klijenta",
     "collapseSidebar": "Skupi meni",
@@ -135,6 +136,23 @@
     "unseatAllDone": "Uklonjeno {{count}} gostiju.",
     "seatCleared": "Mesto je oslobođeno.",
     "undo": "Vrati"
+  },
+  "print": {
+    "title": "Štampa",
+    "reportGuests": "Spisak gostiju",
+    "reportTables": "Spisak stolova",
+    "reportLayout": "Raspored stolova",
+    "printButton": "Štampaj",
+    "noActivePlan": "Nema aktivnog rasporeda. Aktivirajte raspored na stranici Raspored stolova da biste štampali.",
+    "planLabel": "Raspored: {{name}}",
+    "guestsHeading": "Spisak gostiju",
+    "tablesHeading": "Stolovi",
+    "layoutHeading": "Raspored stolova",
+    "confirmed": "{{count}} potvrđeno",
+    "notSeated": "—",
+    "child": "dete",
+    "noGuests": "Nema potvrđenih gostiju.",
+    "emptyTable": "Nema gostiju za stolom"
   },
   "accommodation": {
     "NONE": "Bez smeštaja",
