@@ -1,6 +1,6 @@
 import {
   CanActivate, ExecutionContext, Injectable,
-  BadRequestException, ForbiddenException,
+  BadRequestException, ForbiddenException, InternalServerErrorException,
   createParamDecorator,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -44,10 +44,17 @@ export class ClientContextGuard implements CanActivate {
 }
 
 // Inject the validated current client id into a handler param. Requires
-// ClientContextGuard to have run first.
+// ClientContextGuard to have run first — throws if the guard was omitted.
 export const CurrentClientId = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext): string =>
-    ctx.switchToHttp().getRequest().clientId,
+  (_data: unknown, ctx: ExecutionContext): string => {
+    const clientId: string | undefined = ctx.switchToHttp().getRequest().clientId;
+    if (!clientId) {
+      throw new InternalServerErrorException(
+        'CurrentClientId used without ClientContextGuard (req.clientId is unset)',
+      );
+    }
+    return clientId;
+  },
 );
 
 // Convenience: inject the authenticated user id (replaces ad-hoc req.user.id).
