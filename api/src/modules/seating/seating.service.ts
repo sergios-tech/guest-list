@@ -159,6 +159,59 @@ export class SeatingService {
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
+  // ---------------- tenant guards ----------------
+
+  // The seating aggregate's tenant lives on `seating_plan.client_id`; tables and
+  // seats inherit it transitively via their owning plan. These helpers centralise
+  // the "load and verify in client" check so a missed copy can't open a
+  // cross-tenant hole. They keep the existing 404 posture (a foreign-tenant id
+  // 404s as if it didn't exist). Pass `em` to run on a transaction's repository;
+  // note this performs no row locking — locked/queryBuilder call sites stay as-is.
+  private async assertPlanInClient(
+    planId: string,
+    clientId: string,
+    em?: EntityManager,
+  ): Promise<SeatingPlan> {
+    const repo = em ? em.getRepository(SeatingPlan) : this.plans;
+    const plan = await repo.findOne({ where: { id: planId, clientId } });
+    if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
+    return plan;
+  }
+
+  // Loads the seat, then verifies its owning plan is in the client. Preserves the
+  // existing posture of 404-ing on the seat id (hiding the seat's existence)
+  // whether the seat is missing or owned by another tenant.
+  private async assertSeatInClient(
+    seatId: string,
+    clientId: string,
+    em?: EntityManager,
+  ): Promise<Seat> {
+    const seatRepo = em ? em.getRepository(Seat) : this.seats;
+    const planRepo = em ? em.getRepository(SeatingPlan) : this.plans;
+    const seat = await seatRepo.findOne({ where: { id: seatId } });
+    if (!seat) throw new NotFoundException(`Seat ${seatId} not found`);
+    const plan = await planRepo.findOne({ where: { id: seat.planId, clientId } });
+    if (!plan) throw new NotFoundException(`Seat ${seatId} not found`);
+    return seat;
+  }
+
+  // Loads the table, then verifies its owning plan is in the client. Preserves
+  // the existing posture of 404-ing on the table id whether the table is missing
+  // or owned by another tenant.
+  private async assertTableInClient(
+    tableId: string,
+    clientId: string,
+    em?: EntityManager,
+  ): Promise<SeatingTable> {
+    const tableRepo = em ? em.getRepository(SeatingTable) : this.tables;
+    const planRepo = em ? em.getRepository(SeatingPlan) : this.plans;
+    const table = await tableRepo.findOne({ where: { id: tableId } });
+    if (!table) throw new NotFoundException(`Seating table ${tableId} not found`);
+    const plan = await planRepo.findOne({ where: { id: table.planId, clientId } });
+    if (!plan) throw new NotFoundException(`Seating table ${tableId} not found`);
+    return table;
+  }
+
   // ---------------- plans ----------------
 
   async listPlans(clientId: string): Promise<PlanSummaryView[]> {
@@ -242,8 +295,7 @@ export class SeatingService {
   }
 
   async findPlan(id: string, clientId: string): Promise<PlanDetailView> {
-    const plan = await this.plans.findOne({ where: { id, clientId } });
-    if (!plan) throw new NotFoundException(`Seating plan ${id} not found`);
+    const plan = await this.assertPlanInClient(id, clientId);
 
     const tables = await this.tables.find({
       where: { planId: id },
@@ -310,8 +362,7 @@ export class SeatingService {
     userId: string,
     clientId: string,
   ) {
-    const plan = await this.plans.findOne({ where: { id, clientId } });
-    if (!plan) throw new NotFoundException(`Seating plan ${id} not found`);
+    const plan = await this.assertPlanInClient(id, clientId);
 
     const { version, tableCount, seatsPerTable, ...patch } = dto;
     void tableCount; void seatsPerTable; // ignored on PATCH; use table endpoints
@@ -333,8 +384,7 @@ export class SeatingService {
   }
 
   async activatePlan(id: string, userId: string, clientId: string) {
-    const plan = await this.plans.findOne({ where: { id, clientId } });
-    if (!plan) throw new NotFoundException(`Seating plan ${id} not found`);
+    await this.assertPlanInClient(id, clientId);
 
     await this.ds.transaction(async (em) => {
       // Deactivate the currently-active plan(s) first — the partial unique
@@ -354,8 +404,7 @@ export class SeatingService {
   }
 
   async removePlan(id: string, clientId: string) {
-    const plan = await this.plans.findOne({ where: { id, clientId } });
-    if (!plan) throw new NotFoundException(`Seating plan ${id} not found`);
+    const plan = await this.assertPlanInClient(id, clientId);
     await this.plans.remove(plan);
     return { id, deleted: true };
   }
@@ -409,17 +458,9 @@ export class SeatingService {
 
   async removeTable(id: string, clientId: string) {
     await this.ds.transaction(async (em) => {
-      const tableRepo = em.getRepository(SeatingTable);
       const seatRepo = em.getRepository(Seat);
 
-      const table = await tableRepo.findOne({ where: { id } });
-      if (!table) throw new NotFoundException(`Seating table ${id} not found`);
-
-      // Tenant check: the table inherits its tenant via its owning plan, which
-      // must belong to the current client (404 otherwise).
-      const plan = await em.getRepository(SeatingPlan)
-        .findOne({ where: { id: table.planId, clientId } });
-      if (!plan) throw new NotFoundException(`Seating table ${id} not found`);
+      const table = await this.assertTableInClient(id, clientId, em);
 
       // Lock every seat row for this table FOR UPDATE so a concurrent
       // assignSeat cannot slip in between the occupancy check and the
@@ -444,7 +485,7 @@ export class SeatingService {
         });
       }
 
-      await tableRepo.remove(table);
+      await em.getRepository(SeatingTable).remove(table);
     }).catch(rethrowDbError);
     return { id, deleted: true };
   }
@@ -454,14 +495,7 @@ export class SeatingService {
     // unique-violation on tableNumber cannot leave a partial resize behind.
     await this.ds.transaction(async (em) => {
       const tableRepo = em.getRepository(SeatingTable);
-      const table = await tableRepo.findOne({ where: { id } });
-      if (!table) throw new NotFoundException(`Seating table ${id} not found`);
-
-      // Tenant check: the table inherits its tenant via its owning plan, which
-      // must belong to the current client (404 otherwise).
-      const plan = await em.getRepository(SeatingPlan)
-        .findOne({ where: { id: table.planId, clientId } });
-      if (!plan) throw new NotFoundException(`Seating table ${id} not found`);
+      const table = await this.assertTableInClient(id, clientId, em);
 
       if (dto.label !== undefined) table.label = dto.label || null;
       if (dto.tableNumber !== undefined) table.tableNumber = dto.tableNumber;
@@ -526,13 +560,7 @@ export class SeatingService {
   // ---------------- seats ----------------
 
   async assignSeat(seatId: string, dto: AssignSeatDto, clientId: string) {
-    const seat = await this.seats.findOne({ where: { id: seatId } });
-    if (!seat) throw new NotFoundException(`Seat ${seatId} not found`);
-
-    // Tenant check: the seat inherits its tenant via its owning plan, which
-    // must belong to the current client (404 as if the seat didn't exist).
-    const plan = await this.plans.findOne({ where: { id: seat.planId, clientId } });
-    if (!plan) throw new NotFoundException(`Seat ${seatId} not found`);
+    const seat = await this.assertSeatInClient(seatId, clientId);
 
     // Reset all assignment fields before applying the new one so an existing
     // attendee-assigned seat can be overwritten with a slot assignment and
@@ -580,11 +608,7 @@ export class SeatingService {
   }
 
   async clearSeat(seatId: string, clientId: string) {
-    const seat = await this.seats.findOne({ where: { id: seatId } });
-    if (!seat) throw new NotFoundException(`Seat ${seatId} not found`);
-    // Tenant check: the seat's owning plan must belong to the current client.
-    const plan = await this.plans.findOne({ where: { id: seat.planId, clientId } });
-    if (!plan) throw new NotFoundException(`Seat ${seatId} not found`);
+    const seat = await this.assertSeatInClient(seatId, clientId);
     seat.attendeeId = null;
     seat.invitationId = null;
     seat.slotIndex = null;
@@ -661,8 +685,7 @@ export class SeatingService {
   // ---------------- auto-fill ----------------
 
   async autoFill(planId: string, dto: AutoFillDto, clientId: string) {
-    const plan = await this.plans.findOne({ where: { id: planId, clientId } });
-    if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
+    await this.assertPlanInClient(planId, clientId);
 
     const result = await this.ds.transaction(async (em) => {
       const seatRepo = em.getRepository(Seat);
@@ -814,8 +837,7 @@ export class SeatingService {
   // ---------------- unseated ----------------
 
   async unseatedForPlan(planId: string, clientId: string): Promise<UnseatedUnit[]> {
-    const plan = await this.plans.findOne({ where: { id: planId, clientId } });
-    if (!plan) throw new NotFoundException(`Seating plan ${planId} not found`);
+    await this.assertPlanInClient(planId, clientId);
 
     const invitations = await this.invitations.find({
       where: { status: RsvpStatus.Confirmed, clientId },
