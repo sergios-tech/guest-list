@@ -40,6 +40,42 @@ export interface TableGuestGroup {
   members: TableMember[];
 }
 
+// One row of the flat attendee report: a single named attendee, the family
+// (invitation) they belong to, and the table they're seated at (null when the
+// attendee is confirmed but unseated).
+export interface AttendeeRow {
+  id: string;
+  fullName: string;
+  isChild: boolean;
+  guestLabel: string;
+  tableNumber: number | null;
+}
+
+/**
+ * Flatten the per-guest print payload into one row per named attendee for the
+ * attendee-list report, sorted globally by full name.
+ *
+ *   • Un-nests `guests[].attendees[]`, stamping each attendee with its family's
+ *     `guestLabel` — the inverse of GuestListReport's nesting.
+ *   • Keeps unseated attendees (tableNumber stays null → rendered as "—"); the
+ *     report decided to list everyone, not only the seated.
+ *   • Locale-aware sort via `localeCompare` so Serbian diacritics (Č, Ć, Š, Ž)
+ *     collate correctly rather than by raw code point.
+ */
+export function flattenAttendees(guests: PrintGuest[]): AttendeeRow[] {
+  const rows: AttendeeRow[] = guests.flatMap((g) =>
+    g.attendees.map((a) => ({
+      id: a.id,
+      fullName: a.fullName,
+      isChild: a.isChild,
+      guestLabel: g.guestLabel,
+      tableNumber: a.tableNumber,
+    })),
+  );
+  rows.sort((a, b) => a.fullName.localeCompare(b.fullName));
+  return rows;
+}
+
 /**
  * Collapse a table's flat seat list into the guest→members tree the table-list
  * report renders: one entry per family seated at the table, each carrying the
