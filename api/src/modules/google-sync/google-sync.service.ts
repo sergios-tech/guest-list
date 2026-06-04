@@ -245,6 +245,28 @@ export class GoogleSyncService {
     // DB invitation must NOT be treated as an orphan and deleted — otherwise a
     // transient count typo would silently delete an existing, seated guest.
     const protectedLabels = new Set<string>();
+
+    // Continue mode: surface out-of-range counts as structured soft errors and
+    // exclude the offending row from the apply set (same outcome as clean mode,
+    // but without duplicate-label collapsing or the empty-sheet guard, since
+    // continue mode never deletes orphans). Without this pre-check the bad row
+    // would reach mgr.save(), trip the DB CHECK (SQLSTATE 23514), and be swallowed
+    // by isolateErrors as an opaque "Constraint violation" — a silent data loss.
+    if (mode === 'continue') {
+      const filtered: SheetRowInput[] = [];
+      for (const sr of sheetRows) {
+        const invalid = validateCounts(sr.row);
+        if (invalid) {
+          result.errors.push({
+            rowNumber: sr.rowNumber, guestLabel: sr.row.guestLabel, message: invalid,
+          });
+          continue;
+        }
+        filtered.push(sr);
+      }
+      rowsToApply = filtered;
+    }
+
     if (mode === 'clean') {
       // Pre-flight BEFORE any write so the transaction can be genuinely atomic.
       // Drop out-of-range rows (they would otherwise trip a DB CHECK and, inside
@@ -510,11 +532,12 @@ export class GoogleSyncService {
   }
 }
 
-// Pre-flight guard for clean mode: the DB enforces `adults/children/planned_count/
-// forecast BETWEEN 0 AND 12` as CHECK constraints. In continue mode a violating
-// row is isolated (its own implicit transaction fails, the rest proceed), but in
-// clean mode every write shares one transaction, so a single CHECK failure would
-// abort the whole batch. Validate up front and report the row instead. Returns an
+// Pre-flight guard used by both sync modes: the DB enforces `adults/children/
+// planned_count/forecast BETWEEN 0 AND 12` as CHECK constraints. In clean mode
+// every write shares one transaction, so a single CHECK failure would abort the
+// whole batch; in continue mode each row is isolated, but the error surfaces as
+// an opaque "Constraint violation" and the row's update is silently dropped.
+// Both modes validate up front and report the offending row instead. Returns an
 // error message, or null when the row's counts are all in range.
 function validateCounts(row: ParsedRow): string | null {
   const fields: Array<[string, number | null | undefined]> = [
