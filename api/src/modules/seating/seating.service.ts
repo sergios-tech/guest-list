@@ -8,7 +8,7 @@ import {
   OptimisticLockVersionMismatchError, QueryFailedError, Repository,
 } from 'typeorm';
 import { SeatingPlan } from '../../entities/seating-plan.entity';
-import { SeatingTable } from '../../entities/seating-table.entity';
+import { SeatingTable, TableShape } from '../../entities/seating-table.entity';
 import { Seat } from '../../entities/seat.entity';
 import { Invitation, RsvpStatus } from '../../entities/invitation.entity';
 import {
@@ -92,6 +92,7 @@ interface TableView {
   tableNumber: number;
   seatCount: number;
   label: string | null;
+  shape: TableShape;
   seats: SeatView[];
 }
 
@@ -272,6 +273,7 @@ export class SeatingService {
         tableNumber: t.tableNumber,
         seatCount: t.seatCount,
         label: t.label ?? null,
+        shape: t.shape,
         seats: seatsByTable.get(t.id) ?? [],
       })),
     };
@@ -367,6 +369,7 @@ export class SeatingService {
         tableNumber,
         seatCount: dto.seatCount,
         label: dto.label ?? null,
+        shape: dto.shape ?? 'circle',
       });
       const saved = await tableRepo.save(table);
 
@@ -437,6 +440,7 @@ export class SeatingService {
 
       if (dto.label !== undefined) table.label = dto.label || null;
       if (dto.tableNumber !== undefined) table.tableNumber = dto.tableNumber;
+      if (dto.shape !== undefined) table.shape = dto.shape;
 
       if (dto.seatCount !== undefined && dto.seatCount !== table.seatCount) {
         await this.resizeTable(em, table, dto.seatCount);

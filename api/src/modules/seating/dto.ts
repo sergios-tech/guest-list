@@ -1,8 +1,9 @@
 import {
-  IsBoolean, IsInt, IsOptional, IsString, IsUUID,
+  IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID,
   Max, MaxLength, Min, ValidateIf,
 } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
+import { TABLE_SHAPES, TableShape } from '../../entities/seating-table.entity';
 
 export class CreatePlanDto {
   @IsString() @MaxLength(120)
@@ -35,6 +36,9 @@ export class UpdateTableDto {
 
   @IsOptional() @IsString() @MaxLength(120)
   label?: string;
+
+  @IsOptional() @IsIn(TABLE_SHAPES)
+  shape?: TableShape;
 }
 
 export class CreateTableDto {
@@ -47,6 +51,9 @@ export class CreateTableDto {
 
   @IsOptional() @IsString() @MaxLength(120)
   label?: string;
+
+  @IsOptional() @IsIn(TABLE_SHAPES)
+  shape?: TableShape;
 }
 
 // Exactly one of {attendeeId} OR {invitationId, slotIndex} must be set.

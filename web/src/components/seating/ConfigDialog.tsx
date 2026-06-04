@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Box, Button, Dialog, DialogActions, DialogContent, DialogContentText,
-  DialogTitle, Stack, TextField,
+  DialogTitle, MenuItem, Stack, TextField,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/DeleteOutline';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../../lib/api';
 import { useSnackbar } from '../../lib/snackbar';
 import { apiErrorMessage } from '../../lib/errors';
-import type { PlanDetail, TableView } from '../../lib/seating';
+import type { PlanDetail, TableShape, TableView } from '../../lib/seating';
 
 // One dialog component, two modes — `mode` switches between "create a brand
 // new plan" and "edit a single table". Keeping them together avoids two
@@ -36,6 +36,7 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
   const [label, setLabel] = useState('');
   const [seatCount, setSeatCount] = useState(8);
   const [tableNumber, setTableNumber] = useState(1);
+  const [shape, setShape] = useState<TableShape>('circle');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
       setLabel(mode.table.label ?? '');
       setSeatCount(mode.table.seatCount);
       setTableNumber(mode.table.tableNumber);
+      setShape(mode.table.shape ?? 'circle');
     }
   }, [open, mode]);
 
@@ -76,13 +78,16 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
       // PATCH risks an unnecessary unique-violation against another table
       // that happens to use the same number on a different plan, and also
       // forces a needless rename path through the API even for label edits.
-      const body: { label?: string; seatCount?: number; tableNumber?: number } = {};
+      const body: {
+        label?: string; seatCount?: number; tableNumber?: number; shape?: TableShape;
+      } = {};
       const trimmedLabel = label.trim();
       if (trimmedLabel !== (mode.table.label ?? '')) {
         body.label = trimmedLabel || undefined;
       }
       if (seatCount !== mode.table.seatCount) body.seatCount = seatCount;
       if (tableNumber !== mode.table.tableNumber) body.tableNumber = tableNumber;
+      if (shape !== mode.table.shape) body.shape = shape;
       await api.patch(`/seating/tables/${mode.table.id}`, body);
     },
     onSuccess: () => {
@@ -181,6 +186,16 @@ export default function ConfigDialog({ open, mode, onClose, onPlanCreated }: Con
             onChange={(e) => setLabel(e.target.value)}
             fullWidth
           />
+          <TextField
+            select
+            label={t('seating.tableShape')}
+            value={shape}
+            onChange={(e) => setShape(e.target.value as TableShape)}
+            fullWidth
+          >
+            <MenuItem value="circle">{t('seating.shapeCircle')}</MenuItem>
+            <MenuItem value="rectangle">{t('seating.shapeRectangle')}</MenuItem>
+          </TextField>
           <TextField
             label={t('seating.seatCount')}
             type="number"
