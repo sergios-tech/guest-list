@@ -11,6 +11,7 @@ import { SeatingPlan } from '../../entities/seating-plan.entity';
 import { SeatingTable, TableShape } from '../../entities/seating-table.entity';
 import { Seat } from '../../entities/seat.entity';
 import { Invitation, RsvpStatus } from '../../entities/invitation.entity';
+import { Attendee } from '../../entities/attendee.entity';
 import {
   AssignSeatDto, AutoFillDto, CreatePlanDto, CreateTableDto, SwapSeatsDto,
   UpdatePlanDto, UpdateTableDto,
@@ -154,6 +155,7 @@ export class SeatingService {
     @InjectRepository(SeatingTable) private readonly tables: Repository<SeatingTable>,
     @InjectRepository(Seat) private readonly seats: Repository<Seat>,
     @InjectRepository(Invitation) private readonly invitations: Repository<Invitation>,
+    @InjectRepository(Attendee) private readonly attendees: Repository<Attendee>,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
@@ -540,8 +542,27 @@ export class SeatingService {
     seat.slotIndex = null;
 
     if (dto.attendeeId) {
+      // Tenant check: attendees carry no client_id; scope is inherited via the
+      // parent invitation. Load the attendee and verify its invitation belongs
+      // to this client (404 on mismatch — same posture as the seat/plan check).
+      const attendee = await this.attendees.findOne({
+        where: { id: dto.attendeeId },
+        select: ['id', 'invitationId'],
+      });
+      if (!attendee) throw new NotFoundException(`Seat ${seatId} not found`);
+      const inv = await this.invitations.findOne({
+        where: { id: attendee.invitationId, clientId },
+        select: ['id'],
+      });
+      if (!inv) throw new NotFoundException(`Seat ${seatId} not found`);
       seat.attendeeId = dto.attendeeId;
     } else if (dto.invitationId && dto.slotIndex !== undefined) {
+      // Tenant check: verify the invitation belongs to this client.
+      const inv = await this.invitations.findOne({
+        where: { id: dto.invitationId, clientId },
+        select: ['id'],
+      });
+      if (!inv) throw new NotFoundException(`Seat ${seatId} not found`);
       seat.invitationId = dto.invitationId;
       seat.slotIndex = dto.slotIndex;
     } else {
