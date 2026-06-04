@@ -115,6 +115,37 @@ describe('effectiveAttendeeSync', () => {
   });
 });
 
+describe('reconcileAttendees', () => {
+  it('prefers the same-isChild existing row when two same-named attendees differ only by is_child', () => {
+    // existing: adult "Marko" (id=a) and child "Marko" (id=b)
+    const existing = [
+      { id: 'a', fullName: 'Marko', isChild: false },
+      { id: 'b', fullName: 'Marko', isChild: true },
+    ];
+    // desired order is reversed: child first, then adult
+    const desired = [
+      { fullName: 'Marko', isChild: true },
+      { fullName: 'Marko', isChild: false },
+    ];
+    const plan = reconcileAttendees(existing, desired);
+    // No inserts or deletes
+    expect(plan.toInsert).toHaveLength(0);
+    expect(plan.toDeleteIds).toHaveLength(0);
+    // No flag flips — each desired matched its same-isChild existing row
+    expect(plan.toUpdate).toHaveLength(0);
+  });
+
+  it('still produces a toUpdate when a unique-name attendee changes from adult to child', () => {
+    const existing = [{ id: 'x', fullName: 'Ana', isChild: false }];
+    const desired = [{ fullName: 'Ana', isChild: true }];
+    const plan = reconcileAttendees(existing, desired);
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0]).toEqual({ id: 'x', isChild: true });
+    expect(plan.toInsert).toHaveLength(0);
+    expect(plan.toDeleteIds).toHaveLength(0);
+  });
+});
+
 describe('companionColumnIsEffectivelyAbsent', () => {
   it('treats a located-but-all-blank column as absent (guards the roster)', () => {
     // A stray/duplicate header matched a column with no data beneath it: every

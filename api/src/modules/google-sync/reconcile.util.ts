@@ -174,7 +174,19 @@ export function reconcileAttendees(
 
   for (const d of desired) {
     const queue = byName.get(attendeeKey(d.fullName));
-    const match = queue && queue.length > 0 ? queue.shift() : undefined;
+    // Prefer an existing row whose isChild already matches to avoid flipping the
+    // flag onto the wrong physical person when two same-named attendees differ only
+    // by is_child (e.g. a father "Marko" adult + son "Marko" child). Fall back to
+    // the first available row when no same-flag row exists.
+    let match: DbAttendeeRef | undefined;
+    if (queue && queue.length > 0) {
+      const sameIdx = queue.findIndex((a) => a.isChild === d.isChild);
+      if (sameIdx !== -1) {
+        match = queue.splice(sameIdx, 1)[0];
+      } else {
+        match = queue.shift();
+      }
+    }
     if (match) {
       if (match.isChild !== d.isChild) plan.toUpdate.push({ id: match.id, isChild: d.isChild });
     } else {
