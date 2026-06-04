@@ -31,11 +31,27 @@ body { margin: 0; font-family: Roboto, system-ui, sans-serif; }
 }
 
 /* ---------------- Print ----------------
-   When printing, blank the whole app shell (fixed AppBar, Drawer, the Print
-   page's own toolbar) and reveal only the active report. Using `visibility`
-   rather than `display:none` keeps the report in normal document flow so it
-   prints from the top of the page; descendants are flipped back to visible. */
+   When printing, suppress the app shell (AppBar, Drawer, the main content
+   wrapper padding) with display:none so those elements take no layout space.
+   The .print-area stays in normal document flow (position:static) so content
+   that exceeds one page paginates across all pages — position:absolute would
+   clip to a single page in Chromium. */
 @media print {
+  /* Hide the entire shell; only .print-area content reaches the printer. */
+  .MuiAppBar-root,
+  .MuiDrawer-root {
+    display: none !important;
+  }
+  /* Strip the main-content wrapper padding/margin so the report starts at
+     the top of the first page with no blank leading space. */
+  body > #root main,
+  body > #root > div > main {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+  /* Hide everything that is NOT inside .print-area. */
   body * {
     visibility: hidden;
   }
@@ -43,10 +59,9 @@ body { margin: 0; font-family: Roboto, system-ui, sans-serif; }
   .print-area * {
     visibility: visible;
   }
+  /* Stay in normal document flow so multi-page content paginates correctly. */
   .print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
+    position: static;
     width: 100%;
     padding: 0;
     margin: 0;
