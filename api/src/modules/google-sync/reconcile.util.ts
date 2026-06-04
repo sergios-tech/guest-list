@@ -39,7 +39,7 @@ const STOPWORDS = new Set(['i', '&', 'and', 'und']);
 // names). nameSimilarity does its own lowercasing for the fuzzy pass. Shares the
 // parser's `norm` so the canonical NFC+trim lives in one place.
 export function normalizeLabel(label: string): string {
-  return norm(label);
+  return norm(label).replace(/\s+/g, ' ');
 }
 
 function tokenize(label: string): Set<string> {
