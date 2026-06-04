@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { nameSimilarity, classifyRows, SheetRowInput, DbInvitationRef } from './reconcile.util';
+import {
+  nameSimilarity, classifyRows, effectiveAttendeeSync, reconcileAttendees,
+  SheetRowInput, DbInvitationRef,
+} from './reconcile.util';
 import { RsvpStatus, AccommodationType } from '../../entities/invitation.entity';
 
 function sheetRow(rowNumber: number, guestLabel: string): SheetRowInput {
@@ -76,5 +79,38 @@ describe('classifyRows', () => {
     );
     expect(plan.updates[0].id).toBe('old');
     expect(plan.orphans.map((o) => o.id)).toEqual(['new']);
+  });
+});
+
+describe('effectiveAttendeeSync', () => {
+  it('forces skip for a Declined row regardless of the base mode', () => {
+    expect(effectiveAttendeeSync('mirror', RsvpStatus.Declined)).toBe('skip');
+    expect(effectiveAttendeeSync('additive', RsvpStatus.Declined)).toBe('skip');
+    expect(effectiveAttendeeSync('skip', RsvpStatus.Declined)).toBe('skip');
+  });
+
+  it('leaves the base mode untouched for non-Declined rows', () => {
+    expect(effectiveAttendeeSync('mirror', RsvpStatus.Confirmed)).toBe('mirror');
+    expect(effectiveAttendeeSync('additive', RsvpStatus.Invited)).toBe('additive');
+    expect(effectiveAttendeeSync('mirror', RsvpStatus.Invited)).toBe('mirror');
+  });
+
+  it('a Declined row in clean/mirror mode does NOT delete or insert existing attendees', () => {
+    // A Declined sheet row parses to an empty attendee roster. With the naive
+    // mirror reconcile that empty desired-set would DELETE the stored attendees
+    // (freeing their seats). effectiveAttendeeSync downgrades the row to 'skip',
+    // which the service honours by NOT calling reconcileAttendees at all — so the
+    // existing roster (and its seats) survives.
+    const existing = [{ id: 'att-1', fullName: 'Ana', isChild: false }];
+
+    // Sanity: the underlying reconcile WOULD wipe everything if it ran.
+    const naive = reconcileAttendees(existing, []);
+    expect(naive.toDeleteIds).toEqual(['att-1']);
+
+    // But the row resolves to 'skip', so the service performs no reconciliation.
+    const mode = effectiveAttendeeSync('mirror', RsvpStatus.Declined);
+    expect(mode).toBe('skip');
+    // 'skip' means the service short-circuits before reconcileAttendees; nothing
+    // is inserted, updated, or deleted, and the existing roster is preserved.
   });
 });

@@ -3,7 +3,31 @@
 // (optionally) unit-tested in isolation. See
 // docs/superpowers/specs/2026-05-29-sheet-sync-rename-matching-design.md.
 
+import { RsvpStatus } from '../../entities/invitation.entity';
 import { norm, ParsedAttendee, ParsedRow } from './sheet-parser.util';
+
+// How a sync reconciles the attendee child-collection:
+//  - 'mirror'   = insert/update/delete (clean: the sheet is the full truth)
+//  - 'additive' = insert/update only    (continue: honours "never deletes")
+//  - 'skip'     = do not touch attendees (no companions column, or a Declined row
+//                 whose stored roster + seats must be preserved)
+export type AttendeeSyncMode = 'mirror' | 'additive' | 'skip';
+
+// Resolve the per-row attendee sync mode. A Declined ('ODBIJENO') guest's stored
+// roster must be LEFT UNTOUCHED regardless of clean/continue: the guest is already
+// unseated (confirmed_total -> 0), and mirroring an empty desired-set would DELETE
+// their attendees (freeing their seats via seat.attendee_id ON DELETE SET NULL).
+// If they later un-decline, re-inserted attendees get fresh uuids and the prior
+// seat assignments are lost. So force 'skip' for Declined rows — keyed off the row
+// status (explicit intent), not off an empty desired-set (ambiguous with a guest
+// who genuinely has no companions). The invitation row itself still reconciles
+// normally (status -> ODBIJENO, counts -> 0); only its ATTENDEES are skipped.
+export function effectiveAttendeeSync(
+  mode: AttendeeSyncMode,
+  status: RsvpStatus,
+): AttendeeSyncMode {
+  return status === RsvpStatus.Declined ? 'skip' : mode;
+}
 
 // One parsed sheet row plus its 1-indexed sheet row number (used only for
 // per-row error reporting in the apply loop).

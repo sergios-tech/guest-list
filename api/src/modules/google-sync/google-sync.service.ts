@@ -13,7 +13,8 @@ import {
   ATTENDEES_COLUMN_HEADER, norm, parseRow, ParsedAttendee, ParsedRow, RawSheetRow,
 } from './sheet-parser.util';
 import {
-  classifyRows, normalizeLabel, reconcileAttendees, ReconcilePlan, SheetRowInput,
+  AttendeeSyncMode, classifyRows, effectiveAttendeeSync, normalizeLabel,
+  reconcileAttendees, ReconcilePlan, SheetRowInput,
 } from './reconcile.util';
 
 // Default sheet tab when a client row leaves google_sheet_tab unset. The sheet
@@ -48,12 +49,8 @@ export interface ConnectionStatus {
   connectedAt?: Date;
 }
 
-// How a sync reconciles the attendee child-collection:
-//  - 'mirror'   = insert/update/delete (clean: the sheet is the full truth)
-//  - 'additive' = insert/update only    (continue: honours "never deletes")
-//  - 'skip'     = do not touch attendees (sheet has no companions column; absent
-//                 means "unknown", so never delete a stored roster)
-type AttendeeSyncMode = 'mirror' | 'additive' | 'skip';
+// AttendeeSyncMode + effectiveAttendeeSync (the Declined-row skip) live in the
+// framework-free reconcile.util.ts so they can be unit-tested in isolation.
 
 // Per-sync reconciliation state, built once by buildPlan() from a given manager.
 interface ReconcileContext {
@@ -400,7 +397,10 @@ export class GoogleSyncService {
           ...invRow, clientId, createdBy: userId, updatedBy: userId, sheetRow: ins.rowNumber,
         });
         const saved = await mgr.save(entity);
-        await this.syncAttendees(mgr, saved.id, attendees, [], result, opts.attendeeSync);
+        await this.syncAttendees(
+          mgr, saved.id, attendees, [], result,
+          effectiveAttendeeSync(opts.attendeeSync, ins.row.status),
+        );
         result.inserted++;
       });
     }
@@ -437,7 +437,8 @@ export class GoogleSyncService {
     Object.assign(entity, invRow, { updatedBy: userId, sheetRow: match.rowNumber });
     await mgr.save(entity);
     await this.syncAttendees(
-      mgr, match.id, attendees, attByInvitation.get(match.id) ?? [], result, attendeeSync,
+      mgr, match.id, attendees, attByInvitation.get(match.id) ?? [], result,
+      effectiveAttendeeSync(attendeeSync, match.row.status),
     );
     result[counter]++;
   }
@@ -448,7 +449,8 @@ export class GoogleSyncService {
    * see reconcileAttendees). Runs through the caller's `mgr` so it participates in
    * the same transaction (clean mode) or implicit per-call transaction (continue).
    *
-   * `syncMode` gates deletion: 'skip' touches nothing (no companions column),
+   * `syncMode` gates deletion: 'skip' touches nothing (no companions column, or a
+   * Declined row whose roster must be preserved — see effectiveAttendeeSync),
    * 'additive' inserts/updates but never deletes (continue), 'mirror' also deletes
    * names gone from the sheet (clean).
    */

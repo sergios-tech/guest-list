@@ -262,6 +262,35 @@ describe.skipIf(!RUN_DB_TESTS)('GoogleSyncService.applySheetValues (offline reco
     expect(await attendees.findOneBy({ invitationId: a0.id, fullName: 'Ana' })).not.toBeNull();
   });
 
+  it('a guest going Declined keeps its attendees in clean/mirror mode (roster preserved)', async () => {
+    // Seed a confirmed guest with two companions (creates attendees).
+    await service.applySheetValues(clientId, userId, 'clean', sheet(
+      row('Guest A', { status: 'Potvrđen dolazak', adults: 2, companions: 'Ana, Marko' }),
+    ));
+    const a0 = await invitations.findOneByOrFail({ clientId, guestLabel: 'Guest A' });
+    expect(await attendees.countBy({ invitationId: a0.id })).toBe(2);
+
+    // Same guest now Declines. A clean (mirror) sync parses an empty roster, but
+    // a Declined row must SKIP attendee reconciliation: nothing deleted/inserted,
+    // and the stored attendees (with their seats) survive for a future un-decline.
+    const res = await service.applySheetValues(clientId, userId, 'clean', sheet(
+      row('Guest A', { status: 'Odbijeno' }),
+    ));
+    expect(res.attendeesRemoved).toBe(0);
+    expect(res.attendeesCreated).toBe(0);
+    const after = await invitations.findOneByOrFail({ id: a0.id });
+    expect(after.status).toBe('ODBIJENO');
+    expect(after.confirmedTotal).toBe(0);
+    expect(await attendees.countBy({ invitationId: a0.id })).toBe(2);
+
+    // Continue mode honours the same skip.
+    const cont = await service.applySheetValues(clientId, userId, 'continue', sheet(
+      row('Guest A', { status: 'Odbijeno' }),
+    ));
+    expect(cont.attendeesRemoved).toBe(0);
+    expect(await attendees.countBy({ invitationId: a0.id })).toBe(2);
+  });
+
   it('clean keeps an existing guest whose row has an out-of-range count', async () => {
     await service.applySheetValues(clientId, userId, 'clean', sheet(row('Guest A'), row('Guest B')));
     const a0 = await invitations.findOneByOrFail({ clientId, guestLabel: 'Guest A' });
