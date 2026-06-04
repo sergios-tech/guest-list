@@ -872,7 +872,7 @@ export class SeatingService {
       invitationId: inv.id,
       guestLabel: inv.guestLabel,
       confirmedTotal: inv.confirmedTotal ?? 0,
-      attendees: (inv.attendees ?? []).map((a) => ({
+      attendees: (inv.attendees ?? []).slice(0, inv.confirmedTotal ?? 0).map((a) => ({
         id: a.id,
         fullName: a.fullName,
         isChild: a.isChild,
