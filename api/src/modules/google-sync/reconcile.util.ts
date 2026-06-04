@@ -3,7 +3,46 @@
 // (optionally) unit-tested in isolation. See
 // docs/superpowers/specs/2026-05-29-sheet-sync-rename-matching-design.md.
 
+import { RsvpStatus } from '../../entities/invitation.entity';
 import { norm, ParsedAttendee, ParsedRow } from './sheet-parser.util';
+
+// How a sync reconciles the attendee child-collection:
+//  - 'mirror'   = insert/update/delete (clean: the sheet is the full truth)
+//  - 'additive' = insert/update only    (continue: honours "never deletes")
+//  - 'skip'     = do not touch attendees (no companions column, or a Declined row
+//                 whose stored roster + seats must be preserved)
+export type AttendeeSyncMode = 'mirror' | 'additive' | 'skip';
+
+// Resolve the per-row attendee sync mode. A Declined ('ODBIJENO') guest's stored
+// roster must be LEFT UNTOUCHED regardless of clean/continue: the guest is already
+// unseated (confirmed_total -> 0), and mirroring an empty desired-set would DELETE
+// their attendees (freeing their seats via seat.attendee_id ON DELETE SET NULL).
+// If they later un-decline, re-inserted attendees get fresh uuids and the prior
+// seat assignments are lost. So force 'skip' for Declined rows — keyed off the row
+// status (explicit intent), not off an empty desired-set (ambiguous with a guest
+// who genuinely has no companions). The invitation row itself still reconciles
+// normally (status -> ODBIJENO, counts -> 0); only its ATTENDEES are skipped.
+export function effectiveAttendeeSync(
+  mode: AttendeeSyncMode,
+  status: RsvpStatus,
+): AttendeeSyncMode {
+  return status === RsvpStatus.Declined ? 'skip' : mode;
+}
+
+// Decide whether a LOCATED companion column should be treated as ABSENT for this
+// sync. The column is found by header NAME, so a stray/duplicate header cell that
+// happens to equal 'Zvanica u pratnji' but has NO data beneath it would otherwise
+// make the sheet look like "every guest has zero companions" — and a clean (mirror)
+// sync would read each blank cell as an empty desired-set and DELETE the entire
+// stored attendee roster (freeing seats). The design intent is "absent column !=
+// empty companions", so if EVERY data cell under the located column is empty we
+// downgrade the whole sync to 'skip' (leave attendees untouched), exactly as when
+// the column header is missing entirely. A single non-empty cell keeps the column
+// live. `cells` is the column's raw value from each data row (header excluded);
+// emptiness uses the same norm() test the parser applies to a companion cell.
+export function companionColumnIsEffectivelyAbsent(cells: unknown[]): boolean {
+  return cells.every((c) => norm(c) === '');
+}
 
 // One parsed sheet row plus its 1-indexed sheet row number (used only for
 // per-row error reporting in the apply loop).
@@ -39,7 +78,7 @@ const STOPWORDS = new Set(['i', '&', 'and', 'und']);
 // names). nameSimilarity does its own lowercasing for the fuzzy pass. Shares the
 // parser's `norm` so the canonical NFC+trim lives in one place.
 export function normalizeLabel(label: string): string {
-  return norm(label);
+  return norm(label).replace(/\s+/g, ' ');
 }
 
 function tokenize(label: string): Set<string> {
@@ -135,7 +174,19 @@ export function reconcileAttendees(
 
   for (const d of desired) {
     const queue = byName.get(attendeeKey(d.fullName));
-    const match = queue && queue.length > 0 ? queue.shift() : undefined;
+    // Prefer an existing row whose isChild already matches to avoid flipping the
+    // flag onto the wrong physical person when two same-named attendees differ only
+    // by is_child (e.g. a father "Marko" adult + son "Marko" child). Fall back to
+    // the first available row when no same-flag row exists.
+    let match: DbAttendeeRef | undefined;
+    if (queue && queue.length > 0) {
+      const sameIdx = queue.findIndex((a) => a.isChild === d.isChild);
+      if (sameIdx !== -1) {
+        match = queue.splice(sameIdx, 1)[0];
+      } else {
+        match = queue.shift();
+      }
+    }
     if (match) {
       if (match.isChild !== d.isChild) plan.toUpdate.push({ id: match.id, isChild: d.isChild });
     } else {

@@ -13,7 +13,9 @@ import {
   ATTENDEES_COLUMN_HEADER, norm, parseRow, ParsedAttendee, ParsedRow, RawSheetRow,
 } from './sheet-parser.util';
 import {
-  classifyRows, normalizeLabel, reconcileAttendees, ReconcilePlan, SheetRowInput,
+  AttendeeSyncMode, classifyRows, companionColumnIsEffectivelyAbsent,
+  effectiveAttendeeSync, normalizeLabel, reconcileAttendees, ReconcilePlan,
+  SheetRowInput,
 } from './reconcile.util';
 
 // Default sheet tab when a client row leaves google_sheet_tab unset. The sheet
@@ -48,12 +50,8 @@ export interface ConnectionStatus {
   connectedAt?: Date;
 }
 
-// How a sync reconciles the attendee child-collection:
-//  - 'mirror'   = insert/update/delete (clean: the sheet is the full truth)
-//  - 'additive' = insert/update only    (continue: honours "never deletes")
-//  - 'skip'     = do not touch attendees (sheet has no companions column; absent
-//                 means "unknown", so never delete a stored roster)
-type AttendeeSyncMode = 'mirror' | 'additive' | 'skip';
+// AttendeeSyncMode + effectiveAttendeeSync (the Declined-row skip) live in the
+// framework-free reconcile.util.ts so they can be unit-tested in isolation.
 
 // Per-sync reconciliation state, built once by buildPlan() from a given manager.
 interface ReconcileContext {
@@ -184,7 +182,7 @@ export class GoogleSyncService {
     // it as an empty roster would delete every stored attendee (and free their
     // seats) on an ordinary sync. So skip attendee sync entirely and leave the
     // attendee table untouched.
-    const hasCompanionColumn = companionIdx >= 0;
+    let hasCompanionColumn = companionIdx >= 0;
     if (!hasCompanionColumn) {
       this.logger.warn(
         `Sheet has no '${ATTENDEES_COLUMN_HEADER}' column; attendees left untouched this sync.`,
@@ -193,10 +191,15 @@ export class GoogleSyncService {
 
     // Parse every data row (skip the header), tallying parse-level outcomes.
     const sheetRows: SheetRowInput[] = [];
+    // Raw companion cell from each data row, used after the loop to detect a
+    // located-but-empty column (see companionColumnIsEffectivelyAbsent below).
+    const companionCells: unknown[] = [];
     for (let i = 1; i < values.length; i++) {
       const rowNumber = i + 1;  // values[1] is sheet row 2 (1-indexed)
       const cells = values[i] ?? [];
 
+      const companionCell = companionIdx >= 0 ? cells[companionIdx] : undefined;
+      if (companionIdx >= 0) companionCells.push(companionCell);
       const raw: RawSheetRow = {
         rowNumber,
         guest:         cells[0],
@@ -208,7 +211,7 @@ export class GoogleSyncService {
         forecast:      cells[6],
         responseDate:  cells[7],
         napomena:      cells[8],
-        companions:    companionIdx >= 0 ? cells[companionIdx] : undefined,
+        companions:    companionCell,
       };
       const parsed = parseRow(raw);
       if (parsed.kind === 'skip') {
@@ -220,6 +223,19 @@ export class GoogleSyncService {
       sheetRows.push({ rowNumber, row: parsed.row });
     }
 
+    // A located companion column whose EVERY data cell is blank is treated as
+    // ABSENT for this sync — a stray/duplicate 'Zvanica u pratnji' header with no
+    // data beneath it must NOT make a clean sync read every guest as "zero
+    // companions" and mirror-delete the whole stored roster. Downgrade to the
+    // header-missing behaviour: leave attendees untouched ('skip').
+    if (hasCompanionColumn && companionColumnIsEffectivelyAbsent(companionCells)) {
+      hasCompanionColumn = false;
+      this.logger.warn(
+        `'${ATTENDEES_COLUMN_HEADER}' column is present but empty in every data row; `
+        + 'treating it as absent — attendees left untouched this sync.',
+      );
+    }
+
     // Reconcile the parsed sheet against the DB. Both modes share this setup and
     // the apply helper; only the apply STRATEGY differs (clean is atomic and
     // deletes orphans, continue is best-effort and leaves orphans).
@@ -229,6 +245,28 @@ export class GoogleSyncService {
     // DB invitation must NOT be treated as an orphan and deleted — otherwise a
     // transient count typo would silently delete an existing, seated guest.
     const protectedLabels = new Set<string>();
+
+    // Continue mode: surface out-of-range counts as structured soft errors and
+    // exclude the offending row from the apply set (same outcome as clean mode,
+    // but without duplicate-label collapsing or the empty-sheet guard, since
+    // continue mode never deletes orphans). Without this pre-check the bad row
+    // would reach mgr.save(), trip the DB CHECK (SQLSTATE 23514), and be swallowed
+    // by isolateErrors as an opaque "Constraint violation" — a silent data loss.
+    if (mode === 'continue') {
+      const filtered: SheetRowInput[] = [];
+      for (const sr of sheetRows) {
+        const invalid = validateCounts(sr.row);
+        if (invalid) {
+          result.errors.push({
+            rowNumber: sr.rowNumber, guestLabel: sr.row.guestLabel, message: invalid,
+          });
+          continue;
+        }
+        filtered.push(sr);
+      }
+      rowsToApply = filtered;
+    }
+
     if (mode === 'clean') {
       // Pre-flight BEFORE any write so the transaction can be genuinely atomic.
       // Drop out-of-range rows (they would otherwise trip a DB CHECK and, inside
@@ -400,7 +438,10 @@ export class GoogleSyncService {
           ...invRow, clientId, createdBy: userId, updatedBy: userId, sheetRow: ins.rowNumber,
         });
         const saved = await mgr.save(entity);
-        await this.syncAttendees(mgr, saved.id, attendees, [], result, opts.attendeeSync);
+        await this.syncAttendees(
+          mgr, saved.id, attendees, [], result,
+          effectiveAttendeeSync(opts.attendeeSync, ins.row.status),
+        );
         result.inserted++;
       });
     }
@@ -437,7 +478,8 @@ export class GoogleSyncService {
     Object.assign(entity, invRow, { updatedBy: userId, sheetRow: match.rowNumber });
     await mgr.save(entity);
     await this.syncAttendees(
-      mgr, match.id, attendees, attByInvitation.get(match.id) ?? [], result, attendeeSync,
+      mgr, match.id, attendees, attByInvitation.get(match.id) ?? [], result,
+      effectiveAttendeeSync(attendeeSync, match.row.status),
     );
     result[counter]++;
   }
@@ -448,7 +490,8 @@ export class GoogleSyncService {
    * see reconcileAttendees). Runs through the caller's `mgr` so it participates in
    * the same transaction (clean mode) or implicit per-call transaction (continue).
    *
-   * `syncMode` gates deletion: 'skip' touches nothing (no companions column),
+   * `syncMode` gates deletion: 'skip' touches nothing (no companions column, or a
+   * Declined row whose roster must be preserved — see effectiveAttendeeSync),
    * 'additive' inserts/updates but never deletes (continue), 'mirror' also deletes
    * names gone from the sheet (clean).
    */
@@ -489,11 +532,12 @@ export class GoogleSyncService {
   }
 }
 
-// Pre-flight guard for clean mode: the DB enforces `adults/children/planned_count/
-// forecast BETWEEN 0 AND 12` as CHECK constraints. In continue mode a violating
-// row is isolated (its own implicit transaction fails, the rest proceed), but in
-// clean mode every write shares one transaction, so a single CHECK failure would
-// abort the whole batch. Validate up front and report the row instead. Returns an
+// Pre-flight guard used by both sync modes: the DB enforces `adults/children/
+// planned_count/forecast BETWEEN 0 AND 12` as CHECK constraints. In clean mode
+// every write shares one transaction, so a single CHECK failure would abort the
+// whole batch; in continue mode each row is isolated, but the error surfaces as
+// an opaque "Constraint violation" and the row's update is silently dropped.
+// Both modes validate up front and report the offending row instead. Returns an
 // error message, or null when the row's counts are all in range.
 function validateCounts(row: ParsedRow): string | null {
   const fields: Array<[string, number | null | undefined]> = [

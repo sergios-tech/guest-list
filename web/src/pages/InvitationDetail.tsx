@@ -429,7 +429,7 @@ function AttendeeRow({ attendee, onUpdate, onDelete }: AttendeeRowProps) {
       />
       <FormControlLabel
         control={<Checkbox checked={attendee.isChild}
-          onChange={(e) => onUpdate({ ...attendee, isChild: e.target.checked })} />}
+          onChange={(e) => onUpdate({ ...attendee, fullName, isChild: e.target.checked })} />}
         label={t('invitation.isChild')}
       />
       <IconButton color="error" onClick={onDelete} aria-label="delete">

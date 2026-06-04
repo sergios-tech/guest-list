@@ -12,7 +12,14 @@ const DEV_KEY_HEX =
   '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
 
 function loadKey(): Buffer {
-  const hex = process.env.GOOGLE_TOKEN_ENC_KEY?.trim() || DEV_KEY_HEX;
+  const raw = process.env.GOOGLE_TOKEN_ENC_KEY?.trim();
+  if (!raw && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'GOOGLE_TOKEN_ENC_KEY must be set in production. ' +
+        `Generate one with: openssl rand -hex ${KEY_BYTES}`,
+    );
+  }
+  const hex = raw || DEV_KEY_HEX;
   const buf = Buffer.from(hex, 'hex');
   if (buf.length !== KEY_BYTES) {
     throw new Error(

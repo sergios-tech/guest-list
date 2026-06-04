@@ -206,7 +206,10 @@ export function parseRow(raw: RawSheetRow): ParseResult {
   }
 
   // Attendees come from the dedicated 'Zvanica u pratnji' column, NOT from the
-  // note. Declined guests aren't attending, so they get no attendees.
+  // note. A Declined row parses to an empty roster here, but that empty set is
+  // NEVER applied: the sync layer keys off status === Declined and SKIPS attendee
+  // reconciliation for declined guests (preserving the stored roster + seats — see
+  // effectiveAttendeeSync in google-sync.service.ts). The `[]` is thus inert.
   const attendees: ParsedAttendee[] = status === RsvpStatus.Declined
     ? []
     : parseCompanions(norm(raw.companions), childrenRaw);

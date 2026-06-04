@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { nameSimilarity, classifyRows, SheetRowInput, DbInvitationRef } from './reconcile.util';
+import {
+  nameSimilarity, classifyRows, companionColumnIsEffectivelyAbsent,
+  effectiveAttendeeSync, reconcileAttendees, SheetRowInput, DbInvitationRef,
+} from './reconcile.util';
 import { RsvpStatus, AccommodationType } from '../../entities/invitation.entity';
 
 function sheetRow(rowNumber: number, guestLabel: string): SheetRowInput {
@@ -77,4 +80,91 @@ describe('classifyRows', () => {
     expect(plan.updates[0].id).toBe('old');
     expect(plan.orphans.map((o) => o.id)).toEqual(['new']);
   });
+});
+
+describe('effectiveAttendeeSync', () => {
+  it('forces skip for a Declined row regardless of the base mode', () => {
+    expect(effectiveAttendeeSync('mirror', RsvpStatus.Declined)).toBe('skip');
+    expect(effectiveAttendeeSync('additive', RsvpStatus.Declined)).toBe('skip');
+    expect(effectiveAttendeeSync('skip', RsvpStatus.Declined)).toBe('skip');
+  });
+
+  it('leaves the base mode untouched for non-Declined rows', () => {
+    expect(effectiveAttendeeSync('mirror', RsvpStatus.Confirmed)).toBe('mirror');
+    expect(effectiveAttendeeSync('additive', RsvpStatus.Invited)).toBe('additive');
+    expect(effectiveAttendeeSync('mirror', RsvpStatus.Invited)).toBe('mirror');
+  });
+
+  it('a Declined row in clean/mirror mode does NOT delete or insert existing attendees', () => {
+    // A Declined sheet row parses to an empty attendee roster. With the naive
+    // mirror reconcile that empty desired-set would DELETE the stored attendees
+    // (freeing their seats). effectiveAttendeeSync downgrades the row to 'skip',
+    // which the service honours by NOT calling reconcileAttendees at all — so the
+    // existing roster (and its seats) survives.
+    const existing = [{ id: 'att-1', fullName: 'Ana', isChild: false }];
+
+    // Sanity: the underlying reconcile WOULD wipe everything if it ran.
+    const naive = reconcileAttendees(existing, []);
+    expect(naive.toDeleteIds).toEqual(['att-1']);
+
+    // But the row resolves to 'skip', so the service performs no reconciliation.
+    const mode = effectiveAttendeeSync('mirror', RsvpStatus.Declined);
+    expect(mode).toBe('skip');
+    // 'skip' means the service short-circuits before reconcileAttendees; nothing
+    // is inserted, updated, or deleted, and the existing roster is preserved.
+  });
+});
+
+describe('reconcileAttendees', () => {
+  it('prefers the same-isChild existing row when two same-named attendees differ only by is_child', () => {
+    // existing: adult "Marko" (id=a) and child "Marko" (id=b)
+    const existing = [
+      { id: 'a', fullName: 'Marko', isChild: false },
+      { id: 'b', fullName: 'Marko', isChild: true },
+    ];
+    // desired order is reversed: child first, then adult
+    const desired = [
+      { fullName: 'Marko', isChild: true },
+      { fullName: 'Marko', isChild: false },
+    ];
+    const plan = reconcileAttendees(existing, desired);
+    // No inserts or deletes
+    expect(plan.toInsert).toHaveLength(0);
+    expect(plan.toDeleteIds).toHaveLength(0);
+    // No flag flips — each desired matched its same-isChild existing row
+    expect(plan.toUpdate).toHaveLength(0);
+  });
+
+  it('still produces a toUpdate when a unique-name attendee changes from adult to child', () => {
+    const existing = [{ id: 'x', fullName: 'Ana', isChild: false }];
+    const desired = [{ fullName: 'Ana', isChild: true }];
+    const plan = reconcileAttendees(existing, desired);
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0]).toEqual({ id: 'x', isChild: true });
+    expect(plan.toInsert).toHaveLength(0);
+    expect(plan.toDeleteIds).toHaveLength(0);
+  });
+});
+
+describe('companionColumnIsEffectivelyAbsent', () => {
+  it('treats a located-but-all-blank column as absent (guards the roster)', () => {
+    // A stray/duplicate header matched a column with no data beneath it: every
+    // data cell is empty (undefined / null / '' / whitespace). Without this guard
+    // a clean sync would read each blank as "zero companions" and mirror-delete
+    // the whole stored roster.
+    expect(companionColumnIsEffectivelyAbsent([undefined, null, '', '   '])).toBe(true);
+  });
+
+  it('treats an empty column (zero data rows) as absent', () => {
+    expect(companionColumnIsEffectivelyAbsent([])).toBe(true);
+  });
+
+  it('keeps a column with at least one non-empty companion cell live', () => {
+    expect(companionColumnIsEffectivelyAbsent(['', null, 'Baba Ljubica', ''])).toBe(false);
+  });
+
+  it('uses norm() emptiness — whitespace-only cells count as empty', () => {
+    expect(companionColumnIsEffectivelyAbsent([' \t \n ', '  '])).toBe(true);
+  });
+
 });
