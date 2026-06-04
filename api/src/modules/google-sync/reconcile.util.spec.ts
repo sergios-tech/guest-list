@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  nameSimilarity, classifyRows, effectiveAttendeeSync, reconcileAttendees,
-  SheetRowInput, DbInvitationRef,
+  nameSimilarity, classifyRows, companionColumnIsEffectivelyAbsent,
+  effectiveAttendeeSync, reconcileAttendees, SheetRowInput, DbInvitationRef,
 } from './reconcile.util';
 import { RsvpStatus, AccommodationType } from '../../entities/invitation.entity';
 
@@ -113,4 +113,27 @@ describe('effectiveAttendeeSync', () => {
     // 'skip' means the service short-circuits before reconcileAttendees; nothing
     // is inserted, updated, or deleted, and the existing roster is preserved.
   });
+});
+
+describe('companionColumnIsEffectivelyAbsent', () => {
+  it('treats a located-but-all-blank column as absent (guards the roster)', () => {
+    // A stray/duplicate header matched a column with no data beneath it: every
+    // data cell is empty (undefined / null / '' / whitespace). Without this guard
+    // a clean sync would read each blank as "zero companions" and mirror-delete
+    // the whole stored roster.
+    expect(companionColumnIsEffectivelyAbsent([undefined, null, '', '   '])).toBe(true);
+  });
+
+  it('treats an empty column (zero data rows) as absent', () => {
+    expect(companionColumnIsEffectivelyAbsent([])).toBe(true);
+  });
+
+  it('keeps a column with at least one non-empty companion cell live', () => {
+    expect(companionColumnIsEffectivelyAbsent(['', null, 'Baba Ljubica', ''])).toBe(false);
+  });
+
+  it('uses norm() emptiness — whitespace-only cells count as empty', () => {
+    expect(companionColumnIsEffectivelyAbsent([' \t \n ', '  '])).toBe(true);
+  });
+
 });

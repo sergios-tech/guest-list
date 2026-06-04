@@ -13,8 +13,9 @@ import {
   ATTENDEES_COLUMN_HEADER, norm, parseRow, ParsedAttendee, ParsedRow, RawSheetRow,
 } from './sheet-parser.util';
 import {
-  AttendeeSyncMode, classifyRows, effectiveAttendeeSync, normalizeLabel,
-  reconcileAttendees, ReconcilePlan, SheetRowInput,
+  AttendeeSyncMode, classifyRows, companionColumnIsEffectivelyAbsent,
+  effectiveAttendeeSync, normalizeLabel, reconcileAttendees, ReconcilePlan,
+  SheetRowInput,
 } from './reconcile.util';
 
 // Default sheet tab when a client row leaves google_sheet_tab unset. The sheet
@@ -181,7 +182,7 @@ export class GoogleSyncService {
     // it as an empty roster would delete every stored attendee (and free their
     // seats) on an ordinary sync. So skip attendee sync entirely and leave the
     // attendee table untouched.
-    const hasCompanionColumn = companionIdx >= 0;
+    let hasCompanionColumn = companionIdx >= 0;
     if (!hasCompanionColumn) {
       this.logger.warn(
         `Sheet has no '${ATTENDEES_COLUMN_HEADER}' column; attendees left untouched this sync.`,
@@ -190,10 +191,15 @@ export class GoogleSyncService {
 
     // Parse every data row (skip the header), tallying parse-level outcomes.
     const sheetRows: SheetRowInput[] = [];
+    // Raw companion cell from each data row, used after the loop to detect a
+    // located-but-empty column (see companionColumnIsEffectivelyAbsent below).
+    const companionCells: unknown[] = [];
     for (let i = 1; i < values.length; i++) {
       const rowNumber = i + 1;  // values[1] is sheet row 2 (1-indexed)
       const cells = values[i] ?? [];
 
+      const companionCell = companionIdx >= 0 ? cells[companionIdx] : undefined;
+      if (companionIdx >= 0) companionCells.push(companionCell);
       const raw: RawSheetRow = {
         rowNumber,
         guest:         cells[0],
@@ -205,7 +211,7 @@ export class GoogleSyncService {
         forecast:      cells[6],
         responseDate:  cells[7],
         napomena:      cells[8],
-        companions:    companionIdx >= 0 ? cells[companionIdx] : undefined,
+        companions:    companionCell,
       };
       const parsed = parseRow(raw);
       if (parsed.kind === 'skip') {
@@ -215,6 +221,19 @@ export class GoogleSyncService {
       if (parsed.unknownStatus) result.unknownStatuses++;
       if (parsed.demoted) result.demotedConfirmed++;
       sheetRows.push({ rowNumber, row: parsed.row });
+    }
+
+    // A located companion column whose EVERY data cell is blank is treated as
+    // ABSENT for this sync — a stray/duplicate 'Zvanica u pratnji' header with no
+    // data beneath it must NOT make a clean sync read every guest as "zero
+    // companions" and mirror-delete the whole stored roster. Downgrade to the
+    // header-missing behaviour: leave attendees untouched ('skip').
+    if (hasCompanionColumn && companionColumnIsEffectivelyAbsent(companionCells)) {
+      hasCompanionColumn = false;
+      this.logger.warn(
+        `'${ATTENDEES_COLUMN_HEADER}' column is present but empty in every data row; `
+        + 'treating it as absent — attendees left untouched this sync.',
+      );
     }
 
     // Reconcile the parsed sheet against the DB. Both modes share this setup and

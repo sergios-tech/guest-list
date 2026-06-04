@@ -29,6 +29,21 @@ export function effectiveAttendeeSync(
   return status === RsvpStatus.Declined ? 'skip' : mode;
 }
 
+// Decide whether a LOCATED companion column should be treated as ABSENT for this
+// sync. The column is found by header NAME, so a stray/duplicate header cell that
+// happens to equal 'Zvanica u pratnji' but has NO data beneath it would otherwise
+// make the sheet look like "every guest has zero companions" — and a clean (mirror)
+// sync would read each blank cell as an empty desired-set and DELETE the entire
+// stored attendee roster (freeing seats). The design intent is "absent column !=
+// empty companions", so if EVERY data cell under the located column is empty we
+// downgrade the whole sync to 'skip' (leave attendees untouched), exactly as when
+// the column header is missing entirely. A single non-empty cell keeps the column
+// live. `cells` is the column's raw value from each data row (header excluded);
+// emptiness uses the same norm() test the parser applies to a companion cell.
+export function companionColumnIsEffectivelyAbsent(cells: unknown[]): boolean {
+  return cells.every((c) => norm(c) === '');
+}
+
 // One parsed sheet row plus its 1-indexed sheet row number (used only for
 // per-row error reporting in the apply loop).
 export interface SheetRowInput {
