@@ -768,20 +768,27 @@ export class SeatingService {
         where: { planId },
         order: { tableNumber: 'ASC' },
       });
+      // Single query for all free seats in the plan (ORDER BY seatNumber keeps
+      // each table's bucket ordered as we partition by tableId in memory).
+      const freeSeats = await seatRepo.find({
+        where: {
+          planId,
+          attendeeId: IsNull(),
+          invitationId: IsNull(),
+        },
+        order: { seatNumber: 'ASC' },
+      });
       const freeSeatsByTable = new Map<string, Seat[]>();
       for (const t of tables) {
-        const free = await seatRepo.find({
-          where: {
-            tableId: t.id,
-            attendeeId: IsNull(),
-            invitationId: IsNull(),
-          },
-          order: { seatNumber: 'ASC' },
-        });
-        freeSeatsByTable.set(t.id, free);
+        freeSeatsByTable.set(t.id, []);
+      }
+      for (const s of freeSeats) {
+        const bucket = freeSeatsByTable.get(s.tableId);
+        if (bucket) bucket.push(s);
       }
 
       const unseated: Array<{ invitationId: string; count: number }> = [];
+      const mutatedSeats: Seat[] = [];
       let assignedCount = 0;
 
       for (const group of groups) {
@@ -796,7 +803,7 @@ export class SeatingService {
             for (let i = 0; i < used.length; i++) {
               applyUnit(used[i], remaining[i]);
             }
-            await seatRepo.save(used);
+            mutatedSeats.push(...used);
             assignedCount += used.length;
             placed = true;
             break;
@@ -818,7 +825,7 @@ export class SeatingService {
           for (let i = 0; i < chunk; i++) {
             applyUnit(used[i], remaining[i]);
           }
-          await seatRepo.save(used);
+          mutatedSeats.push(...used);
           assignedCount += chunk;
           remaining = remaining.slice(chunk);
         }
@@ -826,6 +833,11 @@ export class SeatingService {
         if (remaining.length > 0) {
           unseated.push({ invitationId: group.invitationId, count: remaining.length });
         }
+      }
+
+      // Single batched write for all placed seats (transactional).
+      if (mutatedSeats.length > 0) {
+        await seatRepo.save(mutatedSeats);
       }
 
       return { assignedCount, unseated };
