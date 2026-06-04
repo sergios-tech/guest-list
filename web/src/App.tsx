@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Invitations from './pages/Invitations';
 import InvitationDetail from './pages/InvitationDetail';
 import Seating from './pages/Seating';
+import Print from './pages/Print';
 import Clients from './pages/admin/Clients';
 import ClientMembers from './pages/admin/ClientMembers';
 import { useAuth } from './lib/auth';
@@ -35,6 +36,7 @@ export default function App() {
       <Route path="/invitations/new" element={<Protected><InvitationDetail /></Protected>} />
       <Route path="/invitations/:id" element={<Protected><InvitationDetail /></Protected>} />
       <Route path="/seating" element={<Protected><Seating /></Protected>} />
+      <Route path="/print" element={<Protected><Print /></Protected>} />
       <Route path="/admin/clients" element={<SuperAdminOnly><Clients /></SuperAdminOnly>} />
       <Route path="/admin/clients/:id/members" element={<SuperAdminOnly><ClientMembers /></SuperAdminOnly>} />
       <Route path="*" element={<Navigate to="/" replace />} />
