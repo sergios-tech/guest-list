@@ -24,11 +24,16 @@ export interface SeatView {
   householdInvitationId: string | null;
 }
 
+// How a table is drawn on the canvas. Mirrors the API's TableShape union and
+// the chk_seating_table_shape DB constraint.
+export type TableShape = 'circle' | 'rectangle';
+
 export interface TableView {
   id: string;
   tableNumber: number;
   seatCount: number;
   label: string | null;
+  shape: TableShape;
   seats: SeatView[];
 }
 

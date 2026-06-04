@@ -14,6 +14,17 @@ const ORBIT_R = 92;
 const SEAT_R = 16;        // seat circle radius
 const NAME_W = 96;        // width of the name label box
 
+// Rectangle (head-table) geometry. Seats line the top and bottom long edges;
+// the short ends stay empty. Unlike the circle — whose seats spread over a full
+// 360° orbit — a straight row gives each seat far less room, so the horizontal
+// span (and the table block, and the Paper container) GROW with the seats-per-
+// row to guarantee a minimum spacing. A 12-seat banquet table therefore renders
+// wider than a 6-seat one, which is also how a real room is laid out.
+const RECT_H = 80;           // table-block height (rows always fit the 2 long edges)
+const RECT_ROW_OFFSET = 68;  // vertical distance from center to each seat row
+const SEAT_PITCH = 46;       // min center-to-center spacing along a row (> seat ø of 32)
+const RECT_MIN_W = 140;      // table-block width floor so small tables still read as a table
+
 // Shared single-line truncation for the seat's name labels: clamp to the label
 // width and ellipsize overflow. Both the attendee name and the family sub-label
 // build on this so the truncation behaviour can't drift between them.
@@ -33,14 +44,38 @@ interface SeatPosition {
 // Pre-compute polar coordinates for N seats evenly spaced around the table.
 // Angle starts at the top (12 o'clock) and goes clockwise so the order on
 // screen matches the way humans count chairs around a table.
-function seatPositions(n: number): SeatPosition[] {
+function seatPositions(n: number, cx: number, cy: number): SeatPosition[] {
   const out: SeatPosition[] = [];
   for (let i = 0; i < n; i++) {
     const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
     out.push({
-      cx: CENTER + ORBIT_R * Math.cos(a),
-      cy: CENTER + ORBIT_R * Math.sin(a),
+      cx: cx + ORBIT_R * Math.cos(a),
+      cy: cy + ORBIT_R * Math.sin(a),
     });
+  }
+  return out;
+}
+
+// Head-table layout for rectangular tables: split the seats across the top and
+// bottom long edges, leaving the short ends empty. Odd counts give the extra
+// seat to the TOP row (top = ceil(n/2), bottom = floor(n/2)), so seat numbers
+// fill 1..top left-to-right along the top, then top+1..n left-to-right below —
+// matching the order chairs are counted at a real head table.
+function rectSeatPositions(
+  n: number, cx: number, cy: number, halfW: number,
+): SeatPosition[] {
+  const top = Math.ceil(n / 2);
+  const rows = [
+    { count: top, cy: cy - RECT_ROW_OFFSET },
+    { count: n - top, cy: cy + RECT_ROW_OFFSET },
+  ];
+  const out: SeatPosition[] = [];
+  for (const row of rows) {
+    for (let i = 0; i < row.count; i++) {
+      // Spread evenly across the edge; a lone seat sits centered.
+      const frac = row.count === 1 ? 0.5 : i / (row.count - 1);
+      out.push({ cx: cx - halfW + frac * (halfW * 2), cy: row.cy });
+    }
   }
   return out;
 }
@@ -119,6 +154,10 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
               : `${t('seating.seatNumberLabel', { number: seat.seatNumber })} ${t('seating.emptySeat')}`
           }
           sx={(theme) => ({
+          // Circles sit on the low layer; name labels (z 5) always paint above
+          // them, including over adjacent seats' circles at high density.
+          position: 'relative',
+          zIndex: 1,
           width: SEAT_R * 2,
           height: SEAT_R * 2,
           borderRadius: '50%',
@@ -135,7 +174,7 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
               ? 'rgb(128, 255, 128)'
               : 'transparent',
           color: occupied
-            ? 'rgba(0, 0, 0, 0.87)'
+            ? theme.palette.common.white
             : theme.palette.text.disabled,
           display: 'flex',
           alignItems: 'center',
@@ -170,6 +209,8 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
             }}
             sx={{
               ...truncatedLabelSx,
+              position: 'relative',
+              zIndex: 5,
               mt: 0.5,
               fontWeight: 500,
               cursor: onHoist && seat.householdInvitationId ? 'pointer' : 'default',
@@ -188,6 +229,8 @@ function Seat({ seat, cx, cy, onHoist, onUnseat }: SeatProps) {
             variant="caption"
             sx={{
               ...truncatedLabelSx,
+              position: 'relative',
+              zIndex: 5,
               fontSize: 6,
               lineHeight: 1,
               color: 'text.secondary',
@@ -213,14 +256,35 @@ export default function TableCircle({
   table, totalTables, onEdit, onHoist, onUnseat,
 }: TableCircleProps) {
   const { t } = useTranslation();
-  const positions = seatPositions(table.seatCount);
+  const isRect = table.shape === 'rectangle';
+
+  // Rectangle geometry is seat-count-driven so the seat circles never overlap;
+  // circles keep their fixed square footprint. `perRowMax` is the wider (top)
+  // row; the seat row, the table block, and the whole Paper all widen with it.
+  const perRowMax = isRect ? Math.ceil(table.seatCount / 2) : table.seatCount;
+  const rowSpan = isRect ? Math.max(0, perRowMax - 1) * SEAT_PITCH : 0;
+  const seatHalfW = rowSpan / 2;
+  const containerW = isRect
+    ? Math.max(CONTAINER, rowSpan + NAME_W + 24) // + label margins so neighbours don't collide
+    : CONTAINER;
+  const cx = containerW / 2;
+  const cy = CENTER;
+  const tableW = isRect ? Math.max(RECT_MIN_W, rowSpan + SEAT_R * 2) : TABLE_R * 2;
+  const tableH = isRect ? RECT_H : TABLE_R * 2;
+  const positions = isRect
+    ? rectSeatPositions(table.seatCount, cx, cy, seatHalfW)
+    : seatPositions(table.seatCount, cx, cy);
 
   return (
     <Paper
       variant="outlined"
       sx={{
         position: 'relative',
-        width: CONTAINER,
+        // Own stacking context so the seat-circle (z 1) vs name-label (z 5)
+        // layering below is resolved per-table and never leaks into MUI's
+        // app-bar / modal layers (z 1100+).
+        isolation: 'isolate',
+        width: containerW,
         height: CONTAINER + 24, // slack for name labels at the bottom seat
         overflow: 'visible',
         p: 1,
@@ -231,7 +295,7 @@ export default function TableCircle({
         size="small"
         onClick={() => onEdit(table)}
         aria-label={t('seating.editTable')}
-        sx={{ position: 'absolute', top: 4, right: 4, zIndex: 2 }}
+        sx={{ position: 'absolute', top: 4, right: 4, zIndex: 20 }}
       >
         <EditIcon fontSize="small" />
       </IconButton>
@@ -240,11 +304,11 @@ export default function TableCircle({
       <Box
         sx={(theme) => ({
           position: 'absolute',
-          left: CENTER - TABLE_R,
-          top: CENTER - TABLE_R,
-          width: TABLE_R * 2,
-          height: TABLE_R * 2,
-          borderRadius: '50%',
+          left: cx - tableW / 2,
+          top: cy - tableH / 2,
+          width: tableW,
+          height: tableH,
+          borderRadius: isRect ? '12px' : '50%',
           backgroundColor: theme.palette.background.default,
           border: `2px solid ${theme.palette.divider}`,
           display: 'flex',

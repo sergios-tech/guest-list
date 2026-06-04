@@ -5,6 +5,12 @@ import {
 import { SeatingPlan } from './seating-plan.entity';
 import { Seat } from './seat.entity';
 
+// The geometry a table is drawn with on the seating canvas. Stored as plain
+// lowercase strings (not Serbian domain vocabulary — purely a UI shape), and
+// guarded by chk_seating_table_shape in the DB.
+export const TABLE_SHAPES = ['circle', 'rectangle'] as const;
+export type TableShape = (typeof TABLE_SHAPES)[number];
+
 @Entity('seating_table')
 export class SeatingTable {
   @PrimaryGeneratedColumn('uuid')
@@ -25,6 +31,9 @@ export class SeatingTable {
 
   @Column({ type: 'text', nullable: true })
   label?: string | null;
+
+  @Column({ type: 'text', default: 'circle' })
+  shape!: TableShape;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

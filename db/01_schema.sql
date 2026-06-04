@@ -227,6 +227,8 @@ CREATE TABLE seating_table (
   table_number    smallint NOT NULL CHECK (table_number BETWEEN 1 AND 200),
   seat_count      smallint NOT NULL CHECK (seat_count BETWEEN 1 AND 30),
   label           text,
+  shape           text NOT NULL DEFAULT 'circle'
+                    CONSTRAINT chk_seating_table_shape CHECK (shape IN ('circle', 'rectangle')),
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
 
