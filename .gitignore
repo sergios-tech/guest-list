@@ -42,3 +42,8 @@ __pycache__/
 /s.yaml
 /snap.yaml
 /snap2.yaml
+
+# Local code-review / task-runner scaffolding (not part of the repo)
+/.pr-body.md
+/TASKS.md
+/.tasks-state.md
