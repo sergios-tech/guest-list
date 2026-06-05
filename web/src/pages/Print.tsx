@@ -12,11 +12,12 @@ import { useAuth } from '../lib/auth';
 import type { PlanSummary } from '../lib/seating';
 import type { PrintData } from '../lib/print';
 import GuestListReport from '../components/print/GuestListReport';
+import CompactGuestListReport from '../components/print/CompactGuestListReport';
 import AttendeeListReport from '../components/print/AttendeeListReport';
 import TableListReport from '../components/print/TableListReport';
 import LayoutReport from '../components/print/LayoutReport';
 
-type ReportKind = 'guests' | 'attendees' | 'tables' | 'layout';
+type ReportKind = 'guests' | 'compact' | 'attendees' | 'tables' | 'layout';
 
 export default function Print() {
   const { t } = useTranslation();
@@ -81,6 +82,7 @@ export default function Print() {
           aria-label={t('print.title')}
         >
           <ToggleButton value="guests">{t('print.reportGuests')}</ToggleButton>
+          <ToggleButton value="compact">{t('print.reportCompact')}</ToggleButton>
           <ToggleButton value="attendees">{t('print.reportAttendees')}</ToggleButton>
           <ToggleButton value="tables">{t('print.reportTables')}</ToggleButton>
           <ToggleButton value="layout">{t('print.reportLayout')}</ToggleButton>
@@ -96,6 +98,9 @@ export default function Print() {
 
       {report === 'guests' && (
         <GuestListReport planName={data.plan.name} guests={data.guests} />
+      )}
+      {report === 'compact' && (
+        <CompactGuestListReport planName={data.plan.name} guests={data.guests} />
       )}
       {report === 'attendees' && (
         <AttendeeListReport planName={data.plan.name} guests={data.guests} />
