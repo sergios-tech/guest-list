@@ -43,22 +43,36 @@ export default function CompactGuestListReport({
             const tables = guestTableNumbers(g);
             const single = g.attendees.length === 1 ? g.attendees[0] : null;
 
-            // Inline "Name N, Name —, …" — built only for multi-attendee guests
-            // (a lone attendee already lives in the header). Unseated attendees
-            // carry the not-seated dash in place of a table number.
-            const roster =
-              single || g.attendees.length === 0
-                ? null
-                : g.attendees
-                    .map((a) => {
-                      const name = a.isChild
-                        ? `${a.fullName} (${t('print.child')})`
-                        : a.fullName;
-                      const table =
-                        a.tableNumber != null ? a.tableNumber : t('print.notSeated');
-                      return `${name} ${table}`;
-                    })
-                    .join(', ');
+            // Inline roster, built only for multi-attendee guests (a lone
+            // attendee already lives in the header). Attendees are grouped by
+            // table so a shared table isn't repeated per name: a single group
+            // renders as bare names (the header already states the table),
+            // several groups as "<table>: a, b; <table>: c" with the not-seated
+            // dash labelling unseated attendees, seated tables first (ascending).
+            let roster: string | null = null;
+            if (!single && g.attendees.length > 0) {
+              const byTable = new Map<number | null, string[]>();
+              for (const a of g.attendees) {
+                const name = a.isChild
+                  ? `${a.fullName} (${t('print.child')})`
+                  : a.fullName;
+                byTable.set(a.tableNumber, [...(byTable.get(a.tableNumber) ?? []), name]);
+              }
+              const keys = [...byTable.keys()].sort((x, y) => {
+                if (x == null) return 1;
+                if (y == null) return -1;
+                return x - y;
+              });
+              roster =
+                keys.length === 1
+                  ? (byTable.get(keys[0] ?? null) ?? []).join(', ')
+                  : keys
+                      .map((k) => {
+                        const tableLabel = k != null ? k : t('print.notSeated');
+                        return `${tableLabel}: ${(byTable.get(k) ?? []).join(', ')}`;
+                      })
+                      .join('; ');
+            }
 
             return (
               <Box key={g.invitationId} className="print-keep-together" sx={{ py: 0.5 }}>
