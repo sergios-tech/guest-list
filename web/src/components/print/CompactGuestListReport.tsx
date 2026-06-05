@@ -86,17 +86,9 @@ export default function CompactGuestListReport({
                   <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>
                     {', '}
                     {tableSummary(tables)}
+                    {roster && ` (${roster})`}
                   </Box>
                 </Typography>
-
-                {roster && (
-                  <Typography
-                    variant="body2"
-                    sx={{ pl: 3, mt: 0.25, color: 'text.secondary' }}
-                  >
-                    {roster}
-                  </Typography>
-                )}
               </Box>
             );
           })}

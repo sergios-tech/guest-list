@@ -17,12 +17,12 @@ import AttendeeListReport from '../components/print/AttendeeListReport';
 import TableListReport from '../components/print/TableListReport';
 import LayoutReport from '../components/print/LayoutReport';
 
-type ReportKind = 'guests' | 'compact' | 'attendees' | 'tables' | 'layout';
+type ReportKind = 'compact' | 'guests' | 'attendees' | 'tables' | 'layout';
 
 export default function Print() {
   const { t } = useTranslation();
   const { currentClientId } = useAuth();
-  const [report, setReport] = useState<ReportKind>('guests');
+  const [report, setReport] = useState<ReportKind>('compact');
 
   // Print always targets the client's active plan (decided up front): resolve
   // its id from the plan list, then pull the denormalised print payload.
@@ -81,8 +81,8 @@ export default function Print() {
           onChange={(_, v: ReportKind | null) => v && setReport(v)}
           aria-label={t('print.title')}
         >
-          <ToggleButton value="guests">{t('print.reportGuests')}</ToggleButton>
           <ToggleButton value="compact">{t('print.reportCompact')}</ToggleButton>
+          <ToggleButton value="guests">{t('print.reportGuests')}</ToggleButton>
           <ToggleButton value="attendees">{t('print.reportAttendees')}</ToggleButton>
           <ToggleButton value="tables">{t('print.reportTables')}</ToggleButton>
           <ToggleButton value="layout">{t('print.reportLayout')}</ToggleButton>
@@ -96,11 +96,11 @@ export default function Print() {
         </Button>
       </Stack>
 
-      {report === 'guests' && (
-        <GuestListReport planName={data.plan.name} guests={data.guests} />
-      )}
       {report === 'compact' && (
         <CompactGuestListReport planName={data.plan.name} guests={data.guests} />
+      )}
+      {report === 'guests' && (
+        <GuestListReport planName={data.plan.name} guests={data.guests} />
       )}
       {report === 'attendees' && (
         <AttendeeListReport planName={data.plan.name} guests={data.guests} />
