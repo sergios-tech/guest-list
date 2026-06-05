@@ -73,30 +73,22 @@ export default function GuestListReport({ planName, guests }: GuestListReportPro
                 {g.attendees.length > 1 && (
                   <Stack sx={{ pl: 3, mt: 0.5 }} spacing={0.25}>
                     {g.attendees.map((a) => (
-                      <Stack
-                        key={a.id}
-                        direction="row"
-                        alignItems="baseline"
-                        spacing={1}
-                      >
-                        <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                          {a.fullName}
-                          {a.isChild && (
-                            <Typography
-                              component="span"
-                              variant="caption"
-                              sx={{ color: 'text.secondary', ml: 0.5 }}
-                            >
-                              ({t('print.child')})
-                            </Typography>
-                          )}
-                        </Typography>
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                          {a.tableNumber != null
-                            ? t('seating.tableNumberLabel', { number: a.tableNumber })
-                            : t('print.notSeated')}
-                        </Typography>
-                      </Stack>
+                      // Single concatenated column: table number first, then the
+                      // attendee name ("3 Mida"); the not-seated dash stands in
+                      // for the number when the attendee has no seat.
+                      <Typography key={a.id} variant="body2">
+                        {a.tableNumber != null ? a.tableNumber : t('print.notSeated')}{' '}
+                        {a.fullName}
+                        {a.isChild && (
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            sx={{ color: 'text.secondary', ml: 0.5 }}
+                          >
+                            ({t('print.child')})
+                          </Typography>
+                        )}
+                      </Typography>
                     ))}
                   </Stack>
                 )}
