@@ -21,12 +21,10 @@ export default function CompactGuestListReport({
   const { t } = useTranslation();
 
   // The distinct tables a guest occupies, as the header's trailing summary:
-  // singular/plural i18n forms, or the not-seated dash when empty.
-  const tableSummary = (tables: number[]) => {
-    if (tables.length === 0) return t('print.notSeated');
-    if (tables.length === 1) return t('print.tablesSingle', { number: tables[0] });
-    return t('print.tablesMulti', { numbers: tables.join(', ') });
-  };
+  // the bare table number(s) joined by commas, or the not-seated dash when
+  // empty. Rendered bold by the header so the numbers scan at a glance.
+  const tableSummary = (tables: number[]) =>
+    tables.length === 0 ? t('print.notSeated') : tables.join(', ');
 
   return (
     <Box>
@@ -72,23 +70,32 @@ export default function CompactGuestListReport({
             const inlineRoster = groups && groups.length === 1 ? groups[0].names : null;
             const detailGroups = groups && groups.length > 1 ? groups : null;
 
+            // A lone attendee whose name is the household name is the same
+            // person twice — render the name once without the "(Guest)" suffix.
+            const sameName =
+              single != null && single.fullName.trim() === g.guestLabel.trim();
+
             return (
               <Box key={g.invitationId} className="print-keep-together" sx={{ py: 0.5 }}>
                 <Typography sx={{ fontWeight: 600 }}>
                   {single ? (
                     <>
                       {single.fullName}
-                      <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>
-                        {' '}
-                        ({g.guestLabel})
-                      </Box>
+                      {!sameName && (
+                        <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>
+                          {' '}
+                          ({g.guestLabel})
+                        </Box>
+                      )}
                     </>
                   ) : (
                     g.guestLabel
                   )}
                   <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>
                     {', '}
-                    {tableSummary(tables)}
+                    <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                      {tableSummary(tables)}
+                    </Box>
                     {inlineRoster && ` (${inlineRoster})`}
                   </Box>
                 </Typography>
