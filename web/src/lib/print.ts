@@ -77,6 +77,23 @@ export function flattenAttendees(guests: PrintGuest[]): AttendeeRow[] {
 }
 
 /**
+ * Distinct table numbers a guest's attendees occupy, ascending — the aggregate
+ * shown on each guest-list header row (e.g. "tables: 3, 15").
+ *
+ *   • Unseated attendees (tableNumber null) are skipped, so a guest with nobody
+ *     seated yields an empty array (the report renders that as "—").
+ *   • Deduped via a Set: two attendees sharing a table collapse to one entry.
+ *   • Sorted numerically so the list reads low→high regardless of attendee order.
+ */
+export function guestTableNumbers(guest: PrintGuest): number[] {
+  const tables = new Set<number>();
+  for (const a of guest.attendees) {
+    if (a.tableNumber != null) tables.add(a.tableNumber);
+  }
+  return [...tables].sort((x, y) => x - y);
+}
+
+/**
  * Collapse a table's flat seat list into the guest→members tree the table-list
  * report renders: one entry per family seated at the table, each carrying the
  * individuals (named attendees and/or placeholder slots) seated there.
