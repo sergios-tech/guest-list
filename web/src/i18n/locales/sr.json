@@ -140,6 +140,7 @@
   "print": {
     "title": "Štampa",
     "reportGuests": "Spisak gostiju",
+    "reportCompact": "Sažet spisak gostiju",
     "reportAttendees": "Spisak zvanica",
     "reportTables": "Spisak stolova",
     "reportLayout": "Raspored stolova",
@@ -147,6 +148,7 @@
     "noActivePlan": "Nema aktivnog rasporeda. Aktivirajte raspored na stranici Raspored stolova da biste štampali.",
     "planLabel": "Raspored: {{name}}",
     "guestsHeading": "Spisak gostiju",
+    "compactHeading": "Sažet spisak gostiju",
     "attendeesHeading": "Zvanice",
     "tablesHeading": "Stolovi",
     "layoutHeading": "Raspored stolova",

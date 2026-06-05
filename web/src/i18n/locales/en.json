@@ -140,6 +140,7 @@
   "print": {
     "title": "Print",
     "reportGuests": "Guest list",
+    "reportCompact": "Compact guest list",
     "reportAttendees": "Attendee list",
     "reportTables": "Table list",
     "reportLayout": "Table layout",
@@ -147,6 +148,7 @@
     "noActivePlan": "No active seating plan. Activate a plan on the Seating page to print.",
     "planLabel": "Plan: {{name}}",
     "guestsHeading": "Guest list",
+    "compactHeading": "Compact guest list",
     "attendeesHeading": "Attendees",
     "tablesHeading": "Tables",
     "layoutHeading": "Table layout",
