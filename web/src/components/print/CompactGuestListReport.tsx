@@ -8,10 +8,12 @@ interface CompactGuestListReportProps {
 }
 
 // Report 2: a denser clone of the Guest list. The header is identical (guest
-// name + the set of tables its attendees occupy), but the attendees collapse
-// into a single inline "Name table, Name table, …" string instead of a nested
-// per-row list — one block per guest. A lone attendee folds into the header as
-// "Attendee (Guest)" with no roster line.
+// name + the set of tables its attendees occupy). A lone attendee folds into
+// the header as "Attendee (Guest)" with no roster line. When all of a guest's
+// attendees share a single table, their names collapse inline into the header.
+// When they span more than one table, the per-table breakdown drops onto its
+// own indented rows below the header (one row per table), so a wide spread
+// stays legible instead of running into one long parenthetical.
 export default function CompactGuestListReport({
   planName,
   guests,
@@ -43,36 +45,32 @@ export default function CompactGuestListReport({
             const tables = guestTableNumbers(g);
             const single = g.attendees.length === 1 ? g.attendees[0] : null;
 
-            // Inline roster, built only for multi-attendee guests (a lone
+            // Per-table roster, built only for multi-attendee guests (a lone
             // attendee already lives in the header). Attendees are grouped by
-            // table so a shared table isn't repeated per name: a single group
-            // renders as bare names (the header already states the table),
-            // several groups as "<table>: a, b; <table>: c" with the not-seated
-            // dash labelling unseated attendees, seated tables first (ascending).
-            let roster: string | null = null;
+            // table so a shared table isn't repeated per name, with the
+            // not-seated dash labelling unseated attendees and seated tables
+            // first (ascending).
+            let groups: { label: string; names: string }[] | null = null;
             if (!single && g.attendees.length > 0) {
               const byTable = new Map<number | null, string[]>();
               for (const a of g.attendees) {
-                const name = a.isChild
-                  ? `${a.fullName} (${t('print.child')})`
-                  : a.fullName;
-                byTable.set(a.tableNumber, [...(byTable.get(a.tableNumber) ?? []), name]);
+                byTable.set(a.tableNumber, [...(byTable.get(a.tableNumber) ?? []), a.fullName]);
               }
               const keys = [...byTable.keys()].sort((x, y) => {
                 if (x == null) return 1;
                 if (y == null) return -1;
                 return x - y;
               });
-              roster =
-                keys.length === 1
-                  ? (byTable.get(keys[0] ?? null) ?? []).join(', ')
-                  : keys
-                      .map((k) => {
-                        const tableLabel = k != null ? k : t('print.notSeated');
-                        return `${tableLabel}: ${(byTable.get(k) ?? []).join(', ')}`;
-                      })
-                      .join('; ');
+              groups = keys.map((k) => ({
+                label: k != null ? String(k) : t('print.notSeated'),
+                names: (byTable.get(k) ?? []).join(', '),
+              }));
             }
+
+            // One group → fold the names inline into the header. More than one
+            // table → drop the breakdown onto indented per-table rows below.
+            const inlineRoster = groups && groups.length === 1 ? groups[0].names : null;
+            const detailGroups = groups && groups.length > 1 ? groups : null;
 
             return (
               <Box key={g.invitationId} className="print-keep-together" sx={{ py: 0.5 }}>
@@ -80,15 +78,6 @@ export default function CompactGuestListReport({
                   {single ? (
                     <>
                       {single.fullName}
-                      {single.isChild && (
-                        <Typography
-                          component="span"
-                          variant="caption"
-                          sx={{ color: 'text.secondary', ml: 0.5 }}
-                        >
-                          ({t('print.child')})
-                        </Typography>
-                      )}
                       <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>
                         {' '}
                         ({g.guestLabel})
@@ -100,9 +89,22 @@ export default function CompactGuestListReport({
                   <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>
                     {', '}
                     {tableSummary(tables)}
-                    {roster && ` (${roster})`}
+                    {inlineRoster && ` (${inlineRoster})`}
                   </Box>
                 </Typography>
+                {detailGroups && (
+                  <Box sx={{ pl: 2, mt: 0.25 }}>
+                    {detailGroups.map((grp) => (
+                      <Typography
+                        key={grp.label}
+                        variant="body2"
+                        sx={{ color: 'text.secondary' }}
+                      >
+                        {grp.label}: {grp.names}
+                      </Typography>
+                    ))}
+                  </Box>
+                )}
               </Box>
             );
           })}
