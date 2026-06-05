@@ -59,9 +59,8 @@ export default function AttendeeListReport({ planName, guests }: AttendeeListRep
                   </TableCell>
                   <TableCell sx={{ color: 'text.secondary' }}>{r.guestLabel}</TableCell>
                   <TableCell align="right">
-                    {r.tableNumber != null
-                      ? t('seating.tableNumberLabel', { number: r.tableNumber })
-                      : t('print.notSeated')}
+                    {/* Bare number — the column header already says "Table". */}
+                    {r.tableNumber ?? t('print.notSeated')}
                   </TableCell>
                 </TableRow>
               ))}
